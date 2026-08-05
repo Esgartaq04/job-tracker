@@ -2,6 +2,17 @@
 
 > **Status:** Draft v0.1 · **Owner:** Esteven · **Last updated:** 2026-08-04
 
+> **This document is now implemented through Phase 2, with most of Phase 3.**
+> Run it: [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) · What's built and what
+> isn't: [`docs/STATUS.md`](docs/STATUS.md).
+>
+> ```bash
+> docker compose up --build       # http://localhost:5173
+> ```
+>
+> The rest of this file is the original design document, unchanged. Where the
+> implementation deviates from it, `docs/STATUS.md` says so and why.
+
 ---
 
 ## 1. Overview

@@ -1,0 +1,51 @@
+[project]
+name = "job-tracker-api"
+version = "0.1.0"
+description = "Job & Internship Application Tracker — API"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic[email]>=2.7",
+    "pydantic-settings>=2.3",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.1",
+    "python-jose[cryptography]>=3.3",
+    "argon2-cffi>=23.1",
+    "httpx>=0.27",
+    "selectolax>=0.3.21",
+    "python-multipart>=0.0.9",
+    "redis>=5.0",
+    "arq>=0.26",
+]
+
+[project.optional-dependencies]
+llm = ["anthropic>=0.40"]
+browser = ["playwright>=1.44"]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "respx>=0.21",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]
