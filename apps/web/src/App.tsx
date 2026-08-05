@@ -5,13 +5,16 @@ import { useServerEvents } from "./api/events";
 import { AccountMenu } from "./features/auth/AccountMenu";
 import { SignIn } from "./features/auth/SignIn";
 import { Board } from "./features/board/Board";
+import { MobileBoard } from "./features/board/MobileBoard";
 import { Drawer } from "./features/detail/Drawer";
 import { Insights } from "./features/insights/Insights";
 import { QuickAdd } from "./features/quickadd/QuickAdd";
+import { QuickAddSheet } from "./features/quickadd/QuickAddSheet";
 import { NeedsAttention } from "./features/reminders/NeedsAttention";
 import { TableView } from "./features/table/TableView";
 import { TimelineView } from "./features/timeline/TimelineView";
 import { useUi, type ViewName } from "./lib/store";
+import { MOBILE_QUERY, useMediaQuery } from "./lib/useMediaQuery";
 
 const VIEWS: ViewName[] = ["board", "table", "timeline", "insights"];
 
@@ -22,6 +25,7 @@ export function App() {
   const query = useUi((state) => state.query);
   const setQuery = useUi((state) => state.setQuery);
   const toast = useUi((state) => state.toast);
+  const isMobile = useMediaQuery(MOBILE_QUERY);
   const dismissToast = useUi((state) => state.dismissToast);
 
   useServerEvents(signedIn);
@@ -43,8 +47,12 @@ export function App() {
   return (
     <div className="flex h-full flex-col bg-surface text-slate-100">
       <header className="flex items-center gap-3 border-b border-surface-border px-4 py-2.5">
-        <span className="hidden text-sm font-semibold text-slate-200 sm:inline">⬢ Tracker</span>
-        <QuickAdd />
+        <span className="text-sm font-semibold text-slate-200">⬢ Tracker</span>
+        {/* The persistent URL bar is a desktop affordance; on mobile it's the FAB. */}
+        <div className="hidden flex-1 md:flex">
+          <QuickAdd />
+        </div>
+        <div className="flex-1 md:hidden" />
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -76,13 +84,14 @@ export function App() {
       <NeedsAttention />
 
       <main className="min-h-0 flex-1">
-        {view === "board" && <Board />}
+        {view === "board" && (isMobile ? <MobileBoard /> : <Board />)}
         {view === "table" && <TableView />}
         {view === "timeline" && <TimelineView />}
         {view === "insights" && <Insights />}
       </main>
 
       <Drawer />
+      <QuickAddSheet />
 
       {toast && (
         <div

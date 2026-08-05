@@ -27,15 +27,32 @@ Tier 3 (Playwright) is implemented but **off by default** — it needs the `brow
 and `INGEST_BROWSER_ENABLED=1`. It costs seconds and real memory per render, so it stays
 opt-in until a posting actually needs it.
 
-## Phase 3 — Make it stick 🟡 partial
+## Phase 3 — Make it stick ✅
 
-Built: full-text search (Postgres `tsvector` with prefix matching, LIKE on SQLite),
-tags, staleness indicators, the Insights view, Table view with CSV export, Timeline view,
-and `next_action_at` on the drawer.
+Full-text search (Postgres `tsvector` with prefix matching, LIKE on SQLite), tags,
+staleness indicators, the Insights view, Table view, Timeline view, CSV import **and**
+export, reminders, the browser extension, the mobile board, and the PWA share target.
 
-Not built: reminder delivery (email/browser notification — the worker has the sweep and
-logs the count, but nothing sends), the browser extension (the `/ingest/from-dom`
-endpoint it would POST to is done and tested), CSV *import*, and the PWA share target.
+**Reminders.** `src/services/reminders.py` is the single definition of "needs
+attention" — overdue and due follow-ups first, then cards gone quiet; a card with an
+explicit next action is never also nagged about silence. The worker sweeps daily and
+pushes over SSE; the web app shows a needs-attention bar and can raise a desktop
+notification. Email is the one piece still dark: it sits behind a `Sender` interface
+whose default implementation logs. The digest renders and is tested, so switching it on
+is a provider key plus one class.
+
+**Extension.** `apps/extension` is a Manifest V3 extension using `activeTab` — no host
+permissions, no content scripts, inert until you click it. It posts the rendered DOM to
+the existing `/ingest/from-dom`, along with selector-read hints that only fill gaps the
+tiers left. Verified end to end in Chromium against a LinkedIn-shaped fixture.
+
+**Mobile.** Below 768px the board becomes a single column with a segmented status
+switcher and a floating quick-add button; the PWA manifest registers a share target, so
+the OS share sheet opens the app with the URL pre-filled.
+
+Not built: column virtualization (`@tanstack/react-virtual`) — the board loads at most
+200 cards per column today and nothing has been slow yet, so it stays on the list rather
+than in the code.
 
 ## Phase 4 / Phase 5 — not started
 
@@ -71,6 +88,25 @@ drifts by a timezone offset in local development.
 **Search does prefix matching.** `plainto_tsquery` won't match "snow" against
 "Snowflake", which is exactly what a search box gets used for, so the query is built with
 each term prefix-matched.
+
+**A job board is never the employer.** The generic tier used to read `og:site_name` and
+happily record "LinkedIn" as the company. It now rejects a candidate that matches the
+page's own hostname, which covers the boards nobody has added to a list yet, and parses
+LinkedIn's "<Company> hiring <Title> in <Location>" title format directly.
+
+**Extension hints are hints.** They are absorbed last, below every real tier, and marked
+low-confidence. A selector that rots therefore degrades to "no hint" rather than to a
+wrong record — the same principle as `guessed` placeholders.
+
+**Drag-and-drop is not the mobile interaction.** A long-press drag inside a scrolling
+list fights the scroll on touch, so each mobile card carries a status control instead.
+That doubles as the menu equivalent §7.6 requires.
+
+**CSV import guesses about columns, never about identity.** Header matching is loose
+(`employer`/`company`, `role`/`position`, `link`/`url`) because no two spreadsheet
+templates agree, and free-text statuses like "Online Assessment" or "No response" map
+onto the enum. But a row with neither a company nor a title is skipped and reported by
+line number — inventing an identity would put a card on the board that means nothing.
 
 **Board ordering uses float fractional indices.** A move is a single-row UPDATE. When two
 neighbours get within `1e-6` of each other the column is re-spaced on the spot, inside the

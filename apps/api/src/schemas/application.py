@@ -148,3 +148,18 @@ class PageOut(BaseModel):
     items: list[ApplicationOut]
     next_cursor: str | None = None
     total: int
+
+
+class ImportSkipped(BaseModel):
+    line: int
+    reason: str
+
+
+class ImportReportOut(BaseModel):
+    """What the import did — including, explicitly, what it refused to guess at."""
+
+    summary: str
+    created: int
+    duplicates: int
+    skipped: list[ImportSkipped] = Field(default_factory=list)
+    unmapped_columns: list[str] = Field(default_factory=list)

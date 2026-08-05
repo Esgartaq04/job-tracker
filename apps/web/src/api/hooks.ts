@@ -5,13 +5,14 @@ import {
   type UseMutationResult,
 } from "@tanstack/react-query";
 
-import { api } from "./client";
+import { api, getToken } from "./client";
 import type {
   Application,
   ApplicationDetail,
   AppStatus,
   Board,
   Funnel,
+  ImportReport,
   IngestAccepted,
   Reminders,
   SourceBreakdown,
@@ -99,6 +100,31 @@ export function useIngest(): UseMutationResult<
       return batch.accepted;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.board }),
+  });
+}
+
+/** CSV import. Multipart, so it bypasses the JSON helper and sets its own headers. */
+export function useImportCsv() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File): Promise<ImportReport> => {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await fetch("/api/v1/applications/import", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+        body,
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => undefined);
+        throw new Error(detail?.detail ?? `Import failed (${response.status})`);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.board });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
   });
 }
 

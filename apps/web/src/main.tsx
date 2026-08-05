@@ -16,6 +16,16 @@ const queryClient = new QueryClient({
   },
 });
 
+// Registered after load so it never competes with the first render. Dev keeps the
+// worker off: a cached shell during HMR is a debugging trap.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+      console.info("service worker registration skipped:", error.message);
+    });
+  });
+}
+
 createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>

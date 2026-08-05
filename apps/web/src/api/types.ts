@@ -156,3 +156,11 @@ export interface Reminders {
   count: number;
   items: Reminder[];
 }
+
+export interface ImportReport {
+  summary: string;
+  created: number;
+  duplicates: number;
+  skipped: { line: number; reason: string }[];
+  unmapped_columns: string[];
+}
