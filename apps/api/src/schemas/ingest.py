@@ -17,11 +17,23 @@ class IngestBatchRequest(BaseModel):
     mark_as_applied: bool = False
 
 
+class DomHints(BaseModel):
+    """What the extension could read off the rendered page. Hints only: the tiers still
+    run, and a stale selector degrades to "no hint" rather than to a wrong record."""
+
+    title: str | None = None
+    company: str | None = None
+    location: str | None = None
+
+
 class IngestFromDomRequest(BaseModel):
     """Browser-extension path for sites that block server-side fetching (README §4.1)."""
 
     url: str
     html: str
+    hints: DomHints | None = None
+    #: Visible text, in case the HTML is too exotic for the readability pass.
+    fallback_text: str | None = None
     mark_as_applied: bool = False
 
 

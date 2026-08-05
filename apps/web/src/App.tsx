@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { getToken, setToken } from "./api/client";
+import { getToken } from "./api/client";
 import { useServerEvents } from "./api/events";
+import { AccountMenu } from "./features/auth/AccountMenu";
 import { SignIn } from "./features/auth/SignIn";
 import { Board } from "./features/board/Board";
 import { Drawer } from "./features/detail/Drawer";
@@ -50,17 +51,7 @@ export function App() {
           aria-label="Search applications"
           className="hidden w-40 rounded-md border border-surface-border bg-surface-card px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none md:block"
         />
-        <button
-          type="button"
-          onClick={() => {
-            setToken(null);
-            setSignedIn(false);
-          }}
-          className="rounded-md px-2 py-2 text-sm text-slate-400 hover:text-slate-100"
-          title="Sign out"
-        >
-          👤
-        </button>
+        <AccountMenu onSignOut={() => setSignedIn(false)} />
       </header>
 
       <nav className="flex gap-1 border-b border-surface-border px-4">

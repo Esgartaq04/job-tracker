@@ -64,9 +64,12 @@ def run_pipeline(
     *,
     html: str | None = None,
     text: str | None = None,
+    hints: dict | None = None,
 ) -> IngestOutcome:
     """Pure extraction: no database, no side effects. `html` short-circuits the
-    fetch (browser extension), `text` short-circuits everything (manual paste)."""
+    fetch (browser extension), `text` short-circuits everything (manual paste),
+    and `hints` are the extension's read of the rendered page — used only to fill
+    gaps the tiers left, never to overwrite them."""
     started = time.perf_counter()
     outcome = IngestOutcome()
 
@@ -151,9 +154,26 @@ def run_pipeline(
         cleaned = html_utils.html_to_text(html_utils.main_content_html(page_html))
         absorb("llm", llm.extract(cleaned, url=url))
 
+    # ── Extension hints: last, so a real tier always wins ─────────────────
+    if hints and not _looks_complete(outcome.posting):
+        candidate = ExtractedPosting(
+            company=_clean_hint(hints.get("company")),
+            title=_clean_hint(hints.get("title")),
+            location=_clean_hint(hints.get("location")),
+            # Selector-scraped, so below the 0.6 bar that renders a "verify" affordance.
+            confidence=0.5,
+        )
+        if candidate.company or candidate.title or candidate.location:
+            absorb("dom-hints", candidate)
+
     if outcome.posting is None and outcome.error is None:
         outcome.error = "no tier produced a usable posting"
     return finish()
+
+
+def _clean_hint(value: str | None) -> str | None:
+    cleaned = (value or "").strip()
+    return cleaned or None
 
 
 def _looks_complete(posting: ExtractedPosting | None) -> bool:

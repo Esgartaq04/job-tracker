@@ -310,3 +310,51 @@ def test_velocity_buckets_by_week(auth_client: TestClient):
     assert sum(bucket["saved"] for bucket in velocity["weekly"]) == 1
     assert sum(bucket["applied"] for bucket in velocity["weekly"]) == 1
     assert velocity["stale_count"] == 0
+
+
+def test_extension_hints_fill_gaps_the_tiers_left(auth_client: TestClient):
+    """LinkedIn markup defeats the readability pass, so the extension also sends what
+    it could read off the rendered page. Hints fill blanks; they never overwrite."""
+    response = auth_client.post(
+        f"{API}/ingest/from-dom",
+        json={
+            "url": "https://www.linkedin.com/jobs/view/4001",
+            "html": "<html><body><div>Apply now</div></body></html>",
+            "hints": {
+                "title": "Software Engineer Intern",
+                "company": "Ramp",
+                "location": "New York, NY",
+            },
+            "fallback_text": "About the job\n" + ("You will own the ledger service. " * 12),
+        },
+    )
+    assert response.status_code == 200
+    application = response.json()
+    assert application["company"] == "Ramp"
+    assert application["title"] == "Software Engineer Intern"
+    assert application["location"] == "New York, NY"
+    assert "ledger service" in application["description"]
+    # Selector-scraped fields stay flagged for verification.
+    assert application["extraction_meta"]["needs_verification"] is True
+
+
+def test_a_real_extraction_outranks_extension_hints(auth_client: TestClient):
+    """A stale selector must never overwrite what the page actually published."""
+    html = """
+    <html><head><script type="application/ld+json">
+    {"@type":"JobPosting","title":"Backend Engineering Intern",
+     "hiringOrganization":{"name":"Datadog"},
+     "description":"<p>Work on the data ingestion pipeline.</p>"}
+    </script></head><body></body></html>
+    """
+    response = auth_client.post(
+        f"{API}/ingest/from-dom",
+        json={
+            "url": "https://www.linkedin.com/jobs/view/4002",
+            "html": html,
+            "hints": {"title": "Sign in to view", "company": "LinkedIn"},
+        },
+    )
+    application = response.json()
+    assert application["company"] == "Datadog"
+    assert application["title"] == "Backend Engineering Intern"

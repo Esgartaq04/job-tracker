@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Job Tracker — save this posting",
+  "version": "0.1.0",
+  "description": "Save a job posting to your tracker from the page you're already looking at.",
+
+  "permissions": ["activeTab", "scripting", "storage"],
+
+  "//": "No host_permissions: the extension only reads a tab after you click it (activeTab), and only posts to the API you configure.",
+
+  "action": {
+    "default_title": "Save to tracker",
+    "default_popup": "src/popup.html",
+    "default_icon": { "48": "icons/icon-48.png", "128": "icons/icon-128.png" }
+  },
+
+  "background": { "service_worker": "src/background.js", "type": "module" },
+
+  "commands": {
+    "save-posting": {
+      "suggested_key": { "default": "Ctrl+Shift+S", "mac": "Command+Shift+S" },
+      "description": "Save the current posting to the tracker"
+    }
+  },
+
+  "icons": { "48": "icons/icon-48.png", "128": "icons/icon-128.png" }
+}

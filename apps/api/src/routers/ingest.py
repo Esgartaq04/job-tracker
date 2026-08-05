@@ -31,6 +31,10 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 #: Re-ingestion hangs off the application resource, per the API surface in README §6.
 application_router = APIRouter(prefix="/applications", tags=["ingest"])
 
+#: Below this, an "extracted" description is more likely to be page chrome than the
+#: posting — the same bar the readability picker uses to accept a content container.
+MIN_DESCRIPTION_CHARS = 400
+
 
 def _provisional(
     db: DbSession, user: User, url: str, *, mark_as_applied: bool
@@ -129,7 +133,29 @@ def ingest_from_dom(
     """Browser-extension path: the user's own browser already rendered the page, so
     we parse the DOM they POST instead of scraping the site (README §4.1)."""
     application, _ = _provisional(db, user, payload.url, mark_as_applied=payload.mark_as_applied)
-    outcome = pipeline.run_pipeline(application.source_url, html=payload.html)
+    outcome = pipeline.run_pipeline(
+        application.source_url,
+        html=payload.html,
+        hints=payload.hints.model_dump() if payload.hints else None,
+    )
+
+    # LinkedIn and friends defeat the readability pass — it comes back with a nav label
+    # or an "Apply now" button rather than the posting. The extension also sends the
+    # visible text, so prefer that whenever what we extracted is suspiciously thin.
+    fallback = (payload.fallback_text or "").strip()
+    extracted = outcome.posting.description_markdown if outcome.posting else None
+    if fallback and len(fallback) > max(len(extracted or ""), MIN_DESCRIPTION_CHARS):
+        text_outcome = pipeline.run_pipeline(application.source_url, text=fallback)
+        if text_outcome.posting:
+            outcome.posting = (
+                text_outcome.posting
+                if outcome.posting is None
+                else outcome.posting.merge(text_outcome.posting)
+            )
+            outcome.posting.description_markdown = text_outcome.posting.description_markdown
+            outcome.tiers_attempted.append("extension-text")
+            outcome.tier_succeeded = outcome.tier_succeeded or "extension-text"
+
     pipeline.apply_outcome(db, application, outcome)
     db.commit()
 

@@ -190,3 +190,30 @@ def test_manual_paste_short_circuits_every_tier():
     )
     assert outcome.tier_succeeded == "manual"
     assert outcome.posting.description_markdown.startswith("## About the role")
+
+
+def test_generic_tier_reads_linkedins_title_format():
+    """"<Company> hiring <Title> in <Location>" carries all three fields."""
+    html = """
+    <html><head><title>Ramp hiring Software Engineer Intern in New York, NY | LinkedIn</title>
+    </head><body><main><p>%s</p></main></body></html>
+    """ % ("You will own the ledger service. " * 20)
+
+    posting = generic.extract(html, "https://www.linkedin.com/jobs/view/4001")
+    assert posting.company == "Ramp"
+    assert posting.title == "Software Engineer Intern"
+    assert posting.location == "New York, NY"
+
+
+def test_a_job_board_never_becomes_the_employer():
+    """The site's own brand is not the company that's hiring."""
+    html = """
+    <html><head>
+      <meta property="og:site_name" content="LinkedIn">
+      <meta property="og:title" content="Backend Intern | LinkedIn">
+    </head><body><main><p>%s</p></main></body></html>
+    """ % ("Work on payments. " * 30)
+
+    posting = generic.extract(html, "https://www.linkedin.com/jobs/view/1")
+    assert posting.company is None
+    assert posting.title == "Backend Intern"
