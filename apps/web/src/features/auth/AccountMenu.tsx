@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { getToken, setToken } from "../../api/client";
 import { useUi } from "../../lib/store";
+import { enableDesktopNotifications } from "../reminders/NeedsAttention";
 
 /**
  * Account menu. Its reason to exist beyond sign-out is the extension token: the
@@ -69,6 +70,26 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
             Copy extension token
             <span className="block text-[11px] text-slate-500">
               Connects the browser extension
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={async () => {
+              const permission = await enableDesktopNotifications();
+              notify(
+                permission === "granted"
+                  ? "Notifications on — you'll hear about overdue follow-ups"
+                  : "Notifications are blocked in your browser settings",
+                permission === "granted" ? "info" : "error",
+              );
+              setOpen(false);
+            }}
+            className="block w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-surface-border/60"
+          >
+            Enable notifications
+            <span className="block text-[11px] text-slate-500">
+              A daily nudge about overdue follow-ups
             </span>
           </button>
           <button

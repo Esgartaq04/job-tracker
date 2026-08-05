@@ -13,6 +13,7 @@ import type {
   Board,
   Funnel,
   IngestAccepted,
+  Reminders,
   SourceBreakdown,
   Tag,
   Velocity,
@@ -25,6 +26,7 @@ export const queryKeys = {
   funnel: ["stats", "funnel"] as const,
   velocity: ["stats", "velocity"] as const,
   sources: ["stats", "sources"] as const,
+  reminders: ["reminders"] as const,
   search: (q: string) => ["search", q] as const,
 };
 
@@ -40,6 +42,15 @@ export function useApplication(id: string | null) {
     queryKey: queryKeys.application(id ?? ""),
     queryFn: () => api.get<ApplicationDetail>(`/applications/${id}`),
     enabled: Boolean(id),
+  });
+}
+
+export function useReminders() {
+  return useQuery({
+    queryKey: queryKeys.reminders,
+    queryFn: () => api.get<Reminders>("/reminders"),
+    // Due dates change on their own schedule, not only in response to a mutation.
+    refetchInterval: 5 * 60_000,
   });
 }
 
@@ -108,6 +119,7 @@ export function useUpdateApplication(id: string) {
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKeys.application(id), updated);
       queryClient.invalidateQueries({ queryKey: queryKeys.board });
+      queryClient.invalidateQueries({ queryKey: queryKeys.reminders });
     },
   });
 }
@@ -203,6 +215,7 @@ export function useMoveApplication() {
     onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.board });
       queryClient.invalidateQueries({ queryKey: queryKeys.application(variables.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.reminders });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
   });

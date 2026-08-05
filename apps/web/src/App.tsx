@@ -8,6 +8,7 @@ import { Board } from "./features/board/Board";
 import { Drawer } from "./features/detail/Drawer";
 import { Insights } from "./features/insights/Insights";
 import { QuickAdd } from "./features/quickadd/QuickAdd";
+import { NeedsAttention } from "./features/reminders/NeedsAttention";
 import { TableView } from "./features/table/TableView";
 import { TimelineView } from "./features/timeline/TimelineView";
 import { useUi, type ViewName } from "./lib/store";
@@ -71,6 +72,8 @@ export function App() {
           </button>
         ))}
       </nav>
+
+      <NeedsAttention />
 
       <main className="min-h-0 flex-1">
         {view === "board" && <Board />}

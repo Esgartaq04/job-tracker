@@ -193,7 +193,7 @@ def test_manual_paste_short_circuits_every_tier():
 
 
 def test_generic_tier_reads_linkedins_title_format():
-    """"<Company> hiring <Title> in <Location>" carries all three fields."""
+    """ "<Company> hiring <Title> in <Location>" carries all three fields."""
     html = """
     <html><head><title>Ramp hiring Software Engineer Intern in New York, NY | LinkedIn</title>
     </head><body><main><p>%s</p></main></body></html>

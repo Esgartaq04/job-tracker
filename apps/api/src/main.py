@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.config import settings
-from src.routers import applications, auth, events, ingest, search, stats
+from src.routers import applications, auth, events, ingest, reminders, search, stats
 from src.services.events import hub
 from src.services.ingestion import queue
 
@@ -45,6 +45,7 @@ for router in (
     ingest.router,
     ingest.application_router,
     stats.router,
+    reminders.router,
     search.router,
     events.router,
 ):

@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     stale_warn_days: int = 14
     stale_dim_days: int = 30
 
+    # Reminders. The in-app and SSE paths always work; email needs a provider, so it
+    # stays off until one is configured (see src/services/notify.py).
+    reminder_email_enabled: bool = False
+    reminder_sweep_hour_utc: int = 13  # ~8am ET, when a follow-up is worth seeing
+
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
