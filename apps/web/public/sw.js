@@ -4,7 +4,7 @@
  * is server state, and a stale board is worse than an honest "you're offline".
  *
  * Share-target requests are GET (see manifest.webmanifest), so they need no handling
- * here; the app reads `?url=/?text=` on startup.
+ * here; the app reads `?url=` / `?text=` / `?title=` on startup.
  */
 
 const SHELL = "tracker-shell-v1";

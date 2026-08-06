@@ -8,9 +8,9 @@ import { useUi } from "../../lib/store";
  * On mobile, quick-add is a floating button that opens a sheet (README §7.5) — a
  * persistent URL bar in the header would eat a third of the viewport.
  *
- * It also handles the PWA share target: when the OS share sheet sends a URL to the
- * app, we land on `/?share=…` and open pre-filled, so sharing a posting from the
- * LinkedIn app is two taps.
+ * It also handles the PWA share target: when the OS share sheet sends a URL/text to the
+ * app, we land on `/?url=…` (Android may send `?text=…`; iOS sometimes uses `?title=…`)
+ * and open pre-filled, so sharing a posting from the LinkedIn app is two taps.
  */
 export function QuickAddSheet() {
   const [open, setOpen] = useState(false);

@@ -22,7 +22,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const POSTING_ID = Date.now();
 const extensionPath = join(here, "..");
 const API = process.env.API_BASE ?? "http://127.0.0.1:8000";
-const EMAIL = process.env.TRACKER_EMAIL ?? "esgartaq@gmail.com";
+const EMAIL = process.env.TRACKER_EMAIL ?? "demo@example.com";
 const PASSWORD = process.env.TRACKER_PASSWORD ?? "demo-password-123";
 
 // The extractor is written as a module for the service worker, but Chrome serializes
