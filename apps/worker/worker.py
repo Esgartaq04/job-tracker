@@ -1,8 +1,9 @@
-"""arq worker — the deployed shape of the ingestion queue (README §3, §4).
+"""arq worker — the deployed shape of the ingestion queue and the reminder sweep
+(README §3, §4, §10 Phase 3).
 
-Runs as its own Cloud Run service so a Playwright render or a slow origin can't tie
-up an API instance. Without `REDIS_URL` the API runs ingestion in-process instead and
-this worker isn't needed at all — see `src/services/ingestion/queue.py`.
+Runs as its own Cloud Run service so a Playwright render or a slow origin can't tie up
+an API instance. Without `REDIS_URL` the API runs ingestion in-process and this worker
+isn't needed at all — see `src/services/ingestion/queue.py`.
 
     arq worker.WorkerSettings
 """
@@ -16,6 +17,7 @@ from pathlib import Path
 # The worker imports the API package rather than duplicating the pipeline.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api"))
 
+from arq import cron  # noqa: E402
 from arq.connections import RedisSettings  # noqa: E402
 
 from src.core.config import settings  # noqa: E402
@@ -34,22 +36,46 @@ async def ingest_application(_ctx: dict, application_id: str) -> None:
     await asyncio.to_thread(run_ingest_now, uuid.UUID(application_id))
 
 
-async def sweep_stale(_ctx: dict) -> None:
-    """Nightly: log how many applications have gone quiet. Phase 3 turns this into
-    the reminder emails; for now it's the signal that the sweep is wired up."""
+def _sweep() -> dict[str, int]:
+    """Notify every user about what needs attention. Runs in a thread — sync DB."""
     from sqlalchemy import select
 
     from src.core.db import session_scope
-    from src.models import Application
-    from src.services.applications import compute_staleness
+    from src.models import User
+    from src.services import reminders as reminder_service
+    from src.services.notify import notify_user
 
     db = session_scope()
+    counts = {"users": 0, "notified": 0, "reminders": 0}
     try:
-        rows = db.scalars(select(Application).where(Application.archived_at.is_(None))).all()
-        stale = [row for row in rows if compute_staleness(row) != "none"]
-        logger.info("stale sweep: %d of %d applications need a nudge", len(stale), len(rows))
+        for user in db.scalars(select(User)).all():
+            counts["users"] += 1
+            found = reminder_service.collect(db, user.id)
+            if not found:
+                continue
+            counts["notified"] += 1
+            counts["reminders"] += len(found)
+            notify_user(user.id, user.email, found)
+            logger.info(
+                "reminders for %s: %s", user.email, reminder_service.digest(found)
+            )
     finally:
         db.close()
+    return counts
+
+
+async def sweep_reminders(_ctx: dict) -> dict[str, int]:
+    """Daily: surface overdue follow-ups and cards that have gone quiet.
+
+    Delivery is whatever is configured — a connected browser gets an SSE notification
+    immediately; email is off until a provider exists (`src/services/notify.py`).
+    """
+    counts = await asyncio.to_thread(_sweep)
+    logger.info(
+        "reminder sweep: %(reminders)d reminders for %(notified)d of %(users)d users",
+        counts,
+    )
+    return counts
 
 
 async def startup(_ctx: dict) -> None:
@@ -57,8 +83,16 @@ async def startup(_ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [ingest_application]
-    cron_jobs = []  # populated in Phase 3 alongside reminders
+    functions = [ingest_application, sweep_reminders]
+    cron_jobs = [
+        cron(
+            sweep_reminders,
+            hour={settings.reminder_sweep_hour_utc},
+            minute={0},
+            # One instance runs it, not every replica.
+            unique=True,
+        )
+    ]
     on_startup = startup
     redis_settings = RedisSettings.from_dsn(settings.redis_url or "redis://localhost:6379")
     max_jobs = 4

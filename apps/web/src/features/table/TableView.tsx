@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 
-import { useBoard } from "../../api/hooks";
+import { useBoard, useImportCsv } from "../../api/hooks";
+import type { ImportReport } from "../../api/types";
 import { STATUS_LABELS } from "../../api/types";
 import { ageLabel, formatDate } from "../../lib/format";
 import { useUi } from "../../lib/store";
@@ -9,7 +10,11 @@ import { useUi } from "../../lib/store";
 export function TableView() {
   const query = useUi((state) => state.query);
   const openDrawer = useUi((state) => state.openDrawer);
+  const notify = useUi((state) => state.notify);
   const { data: board } = useBoard(query || undefined);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [report, setReport] = useState<ImportReport | null>(null);
+  const importCsv = useImportCsv();
 
   const rows = useMemo(
     () =>
@@ -48,16 +53,78 @@ export function TableView() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <p className="text-sm text-slate-400">{rows.length} applications</p>
-        <button
-          type="button"
-          onClick={exportCsv}
-          className="rounded-md border border-surface-border px-3 py-1.5 text-sm text-slate-300 hover:border-accent hover:text-slate-100"
-        >
-          Export CSV
-        </button>
+        <div className="flex gap-2">
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = ""; // let the same file be picked again
+              if (!file) return;
+              importCsv.mutate(file, {
+                onSuccess: (result) => {
+                  setReport(result);
+                  notify(result.summary);
+                },
+                onError: (error) => notify(error.message, "error"),
+              });
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            disabled={importCsv.isPending}
+            className="rounded-md border border-surface-border px-3 py-1.5 text-sm text-slate-300 hover:border-accent hover:text-slate-100 disabled:opacity-50"
+          >
+            {importCsv.isPending ? "Importing…" : "Import CSV"}
+          </button>
+          <button
+            type="button"
+            onClick={exportCsv}
+            className="rounded-md border border-surface-border px-3 py-1.5 text-sm text-slate-300 hover:border-accent hover:text-slate-100"
+          >
+            Export CSV
+          </button>
+        </div>
       </div>
+
+      {report && (
+        <div className="mb-3 rounded-md border border-surface-border bg-surface-raised/60 p-3 text-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-slate-200">{report.summary}</p>
+            <button
+              type="button"
+              onClick={() => setReport(null)}
+              className="text-xs text-slate-500 hover:text-slate-300"
+            >
+              dismiss
+            </button>
+          </div>
+          {/* Say what was left out and why — an import that silently drops rows is
+              worse than one that refuses the file. */}
+          {report.skipped.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs text-stale-warn">
+              {report.skipped.slice(0, 5).map((row) => (
+                <li key={row.line}>
+                  Row {row.line}: {row.reason}
+                </li>
+              ))}
+              {report.skipped.length > 5 && (
+                <li className="text-slate-500">…and {report.skipped.length - 5} more</li>
+              )}
+            </ul>
+          )}
+          {report.unmapped_columns.length > 0 && (
+            <p className="mt-2 text-xs text-slate-500">
+              Columns not imported: {report.unmapped_columns.join(", ")}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto rounded-lg border border-surface-border">
         <table className="w-full text-left text-sm">

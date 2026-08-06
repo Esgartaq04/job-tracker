@@ -139,3 +139,28 @@ export interface IngestAccepted {
   ingest_status: IngestStatus;
   duplicate: boolean;
 }
+
+export type ReminderKind = "overdue" | "due_today" | "upcoming" | "stale";
+
+export interface Reminder {
+  kind: ReminderKind;
+  reason: string;
+  due_at: string | null;
+  /** Negative when overdue, positive when ahead; for a stale card, days of silence. */
+  days: number;
+  application: Application;
+}
+
+export interface Reminders {
+  summary: string;
+  count: number;
+  items: Reminder[];
+}
+
+export interface ImportReport {
+  summary: string;
+  created: number;
+  duplicates: number;
+  skipped: { line: number; reason: string }[];
+  unmapped_columns: string[];
+}

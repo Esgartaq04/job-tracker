@@ -49,6 +49,8 @@ Everything is an environment variable; defaults are in `apps/api/src/core/config
 | `LLM_MODEL` | `claude-opus-5` | Model used for the extraction fallback |
 | `INGEST_BROWSER_ENABLED` | `0` | Enables Tier 3 (Playwright). Install the `browser` extra first |
 | `STALE_WARN_DAYS` / `STALE_DIM_DAYS` | `14` / `30` | When a card goes amber, then grey |
+| `REMINDER_EMAIL_ENABLED` | `false` | Email digests. Needs a provider — see below |
+| `REMINDER_SWEEP_HOUR_UTC` | `13` | When the worker's daily reminder sweep runs |
 | `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON list |
 
 ## Tests
@@ -84,13 +86,50 @@ npm run typecheck && npm run build
 Every attempt writes an `ingest_jobs` row (tiers attempted, tier that won, duration,
 error), which is what makes a bad paste debuggable from the URL alone.
 
+## Bringing an existing spreadsheet
+
+Table view → **Import CSV**. Headers are matched loosely (`employer`/`company`,
+`role`/`position`, `link`/`url`, `stage`/`status`, `date applied`) and free-text statuses
+like "Online Assessment" or "No response" map onto the board's columns. Re-importing the
+same file is a no-op — rows are matched by canonical URL, or by company + title when
+there's no link.
+
+Rows it can't identify are skipped and reported by line number rather than guessed at,
+and any column it didn't recognise is named back to you. **Export CSV** writes a file the
+importer accepts, so export is a real backup rather than a dead end.
+
+## Reminders
+
+`next_action_at` on a card is a follow-up date. What's overdue, due today, or has simply
+gone quiet appears in the bar above the board, and the account menu can turn on desktop
+notifications.
+
+The worker runs a sweep each day at `REMINDER_SWEEP_HOUR_UTC` and pushes to any
+connected browser over SSE. **Email is not wired to a provider**: it sits behind the
+`Sender` interface in `src/services/notify.py` with an implementation that logs what it
+would have sent. To turn it on, implement `Sender` against your provider, return it from
+`get_sender()`, and set `REMINDER_EMAIL_ENABLED=true`.
+
 ### Sites that block scraping
 
 LinkedIn, Indeed, Glassdoor and ZipRecruiter are not scraped server-side. Two paths
-exist instead: `POST /api/v1/ingest/from-dom` (a browser extension POSTs the DOM the
-user is already looking at — the extension itself is Phase 3 and not built yet) and
-`POST /api/v1/ingest/from-text` (paste the description). Either way the card exists
-from the moment you paste the URL.
+exist instead:
+
+1. **The browser extension** in `apps/extension` — load it unpacked, connect it with the
+   token from the account menu, and click it on any posting. It reads the DOM your
+   browser already rendered and posts it to `/api/v1/ingest/from-dom`. See
+   [`apps/extension/README.md`](../apps/extension/README.md).
+2. **Paste the text** — `POST /api/v1/ingest/from-text`, or the drawer's "Paste the
+   description yourself".
+
+Either way the card exists from the moment you paste the URL.
+
+## On a phone
+
+The board becomes a single column with a status switcher and a floating add button.
+Install it from the browser's "Add to home screen" and it registers as a **share
+target**: share a posting from the LinkedIn app (or anywhere) and the tracker opens with
+the URL already filled in.
 
 ## Adding an ATS adapter
 

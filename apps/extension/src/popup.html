@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Save to tracker</title>
+  </head>
+  <body>
+    <header>
+      <span class="mark">⬢</span>
+      <h1>Save to tracker</h1>
+    </header>
+
+    <section id="save" hidden>
+      <p id="page" class="muted"></p>
+      <button id="save-btn" class="primary">Save</button>
+      <button id="save-applied-btn">Save &amp; mark applied</button>
+      <p id="status" role="status" aria-live="polite"></p>
+      <button id="settings-btn" class="link">Settings</button>
+    </section>
+
+    <section id="settings" hidden>
+      <label>
+        Tracker URL
+        <input id="api-base" type="url" placeholder="http://localhost:8000" />
+      </label>
+      <label>
+        Token
+        <input id="token" type="password" placeholder="paste from the tracker" />
+      </label>
+      <p class="muted">
+        In the tracker, open the account menu and choose <strong>Copy extension token</strong>.
+      </p>
+      <button id="save-settings" class="primary">Connect</button>
+      <p id="settings-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

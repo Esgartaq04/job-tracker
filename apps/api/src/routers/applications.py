@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, select
 
 from src.core.deps import CurrentUser, DbSession
@@ -22,12 +22,13 @@ from src.schemas.application import (
     ApplicationUpdate,
     BoardColumn,
     BoardOut,
+    ImportReportOut,
     MoveRequest,
     NoteCreate,
     PageOut,
     StatusEventOut,
 )
-from src.services import events, ranking
+from src.services import csv_import, events, ranking
 from src.services.applications import (
     apply_text_filter,
     get_owned,
@@ -160,6 +161,48 @@ def create_application(
 
     events.publish(user.id, "application.created", {"application_id": str(application.id)})
     return to_out(application, detail=True)
+
+
+#: Declared before the `/{application_id}` routes: a path parameter matches any string
+#: at routing time, so a later /import would be shadowed and answer 405.
+#: Spreadsheets are big but not unbounded; this keeps a stray upload from eating memory.
+MAX_IMPORT_BYTES = 5 * 1024 * 1024
+
+
+@router.post("/import", response_model=ImportReportOut)
+async def import_applications(
+    user: CurrentUser,
+    db: DbSession,
+    file: Annotated[UploadFile, File(description="CSV export from a spreadsheet")],
+) -> ImportReportOut:
+    """Bring an existing spreadsheet onto the board.
+
+    Headers are matched loosely (company/employer, role/title, link/url, …) because the
+    templates people copy from each other never agree. Identity is not guessed: a row
+    with neither a company nor a title is skipped and reported.
+    """
+    content = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(content) > MAX_IMPORT_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"That file is over {MAX_IMPORT_BYTES // (1024 * 1024)}MB",
+        )
+    if not content.strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That file is empty")
+
+    report = csv_import.import_csv(db, user.id, content)
+    db.flush()
+
+    if report.created:
+        events.publish(user.id, "application.created", {"imported": report.created})
+
+    return ImportReportOut(
+        summary=report.summary,
+        created=report.created,
+        duplicates=report.duplicates,
+        skipped=report.skipped,
+        unmapped_columns=report.unmapped_columns,
+    )
 
 
 @router.get("/{application_id}", response_model=ApplicationDetailOut)

@@ -35,6 +35,7 @@ export function useServerEvents(enabled: boolean): void {
         return;
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.board });
+      queryClient.invalidateQueries({ queryKey: queryKeys.reminders });
       const id = payload?.data?.application_id;
       if (id) queryClient.invalidateQueries({ queryKey: queryKeys.application(id) });
     };
@@ -47,6 +48,7 @@ export function useServerEvents(enabled: boolean): void {
       "application.updated",
       "application.moved",
       "application.archived",
+      "reminder.due",
     ]) {
       source.addEventListener(name, refresh as EventListener);
     }

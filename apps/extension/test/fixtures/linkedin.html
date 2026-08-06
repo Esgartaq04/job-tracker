@@ -1,0 +1,55 @@
+<!doctype html>
+<!--
+  A stripped-down stand-in for a LinkedIn job page: the class names the extension keys
+  off, an interstitial that server-side fetching would get instead of the posting, and
+  no structured data anywhere. Used by test/run.mjs.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ramp hiring Software Engineer Intern in New York, NY | LinkedIn</title>
+    <!-- No canonical link: LinkedIn does not publish one on job pages, so the
+         extractor falls back to location.href and the server strips the tracking param. -->
+    <script>window.__INITIAL_STATE__ = { tracking: true };</script>
+    <style>.hidden { display: none; }</style>
+  </head>
+  <body>
+    <nav aria-label="Primary">
+      <a href="/feed">Home</a><a href="/mynetwork">My Network</a><a href="/jobs">Jobs</a>
+    </nav>
+
+    <main>
+      <div class="job-details-jobs-unified-top-card__job-title">
+        <h1>Software Engineer Intern</h1>
+      </div>
+      <div class="job-details-jobs-unified-top-card__company-name">
+        <a href="/company/ramp">Ramp</a>
+      </div>
+      <span class="job-details-jobs-unified-top-card__bullet">New York, NY</span>
+
+      <button>Apply now</button>
+
+      <section class="jobs-description__content">
+        <h2>About the job</h2>
+        <p>
+          You will own the ledger service end to end: the double-entry core, the
+          reconciliation jobs that run against it nightly, and the APIs the rest of the
+          product builds on. This is production work from week one, not a side project.
+        </p>
+        <h3>What you'll do</h3>
+        <ul>
+          <li>Design and ship services in Go against Postgres.</li>
+          <li>Own correctness: property tests, invariants, and reconciliation checks.</li>
+          <li>Work directly with the payments team on the ledger's public API.</li>
+        </ul>
+        <h3>What we look for</h3>
+        <ul>
+          <li>Coursework or projects in distributed systems or databases.</li>
+          <li>Comfort reading code you did not write.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>© 2026 LinkedIn · Cookie policy · User agreement</footer>
+  </body>
+</html>
