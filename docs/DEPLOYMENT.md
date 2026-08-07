@@ -230,6 +230,13 @@ This path is verified, not assumed: with the SPA built for one origin and served
 another, sign-in, the board, `/reminders`, and the SSE stream all connect with no CORS
 errors in the console.
 
+**Web Analytics** is wired up — `<Analytics />` from `@vercel/analytics/react` is mounted
+in `src/main.tsx`. Note `/react`, not `/next`: this is a Vite SPA, and the `/next` entry
+point imports `next/navigation`, which would fail the build. It still needs turning on
+once in the dashboard (Project → **Analytics** → Enable); until then the script 404s
+harmlessly and the app is unaffected. `public/sw.js` skips `/_vercel/` so the service
+worker can't pin a stale copy of the script.
+
 **Don't route the API through a Vercel rewrite.** It's the tempting no-code-change option,
 but `/api/v1/events` is a long-lived SSE stream and a proxy in the path is precisely what
 breaks those — the API already sets `X-Accel-Buffering: no` for this reason, and that
