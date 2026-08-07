@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright";
 
-import { normalizeBase, originPattern } from "../src/config.js";
+import { DEFAULTS, apiFetch, normalizeBase, originPattern } from "../src/config.js";
 
 // The host pattern decides what the extension may reach, so it gets checked before a
 // browser is involved. A trailing slash or a path must not widen or break it.
@@ -24,6 +24,19 @@ assert.equal(originPattern("https://api.example.com"), "https://api.example.com/
 assert.equal(originPattern("https://api.example.com/"), "https://api.example.com/*");
 assert.equal(originPattern("http://localhost:8000/api/v1"), "http://localhost:8000/*");
 assert.equal(normalizeBase("  https://api.example.com//  "), "https://api.example.com");
+
+// The default must be the deployed API and must be a valid permission target — a
+// trailing slash here would silently produce a pattern that grants nothing.
+assert.match(DEFAULTS.apiBase, /^https:\/\/[^/]+$/, "default apiBase: https, no trailing slash");
+assert.equal(originPattern(DEFAULTS.apiBase), `${DEFAULTS.apiBase}/*`);
+
+// An unreachable host must produce something a person can act on. Chrome reports a
+// missing host permission, a DNS failure and being offline identically as
+// "Failed to fetch", so leaking that string through would be useless.
+await assert.rejects(
+  () => apiFetch("http://127.0.0.1:9/nope"),
+  (error) => !/failed to fetch/i.test(error.message) && /Couldn't reach the tracker/.test(error.message),
+);
 
 const here = dirname(fileURLToPath(import.meta.url));
 // A fresh posting id per run: re-saving a tracked URL correctly focuses the existing

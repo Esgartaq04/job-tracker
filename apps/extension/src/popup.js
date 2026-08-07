@@ -1,5 +1,7 @@
 import {
   DEFAULTS,
+  SLOW_REQUEST_MS,
+  apiFetch,
   getSettings as settings,
   hasApiPermission,
   normalizeBase,
@@ -40,8 +42,14 @@ async function render() {
 async function save(markApplied) {
   el("status").textContent = "Saving…";
   el("status").className = "";
+  // The free instance sleeps; without this the popup reads "Saving…" for a silent minute.
+  const waking = setTimeout(
+    () => (el("status").textContent = "Waking the tracker — this can take a minute…"),
+    SLOW_REQUEST_MS,
+  );
 
   const response = await chrome.runtime.sendMessage({ type: "save-posting", markApplied });
+  clearTimeout(waking);
 
   if (response?.ok) {
     const { company, title } = response.application ?? {};
@@ -77,13 +85,22 @@ el("save-settings").addEventListener("click", async () => {
   }
 
   // Verify before storing, so a typo surfaces here rather than on the first save.
+  el("settings-status").textContent = "Checking…";
+  el("settings-status").className = "";
+  const waking = setTimeout(
+    () => (el("settings-status").textContent = "Waking the tracker — this can take a minute…"),
+    SLOW_REQUEST_MS,
+  );
   try {
-    const response = await fetch(`${apiBase}/api/v1/auth/me`, {
+    const response = await apiFetch(`${apiBase}/api/v1/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (response.status === 401) throw new Error("that token was rejected");
     if (!response.ok) throw new Error(`Tracker returned ${response.status}`);
   } catch (error) {
-    return fail(`Couldn't reach the tracker: ${error.message}`);
+    return fail(error.message);
+  } finally {
+    clearTimeout(waking);
   }
 
   await chrome.storage.sync.set({ apiBase, token });

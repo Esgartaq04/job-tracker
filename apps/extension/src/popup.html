@@ -21,8 +21,8 @@
 
     <section id="settings" hidden>
       <label>
-        Tracker URL
-        <input id="api-base" type="url" placeholder="http://localhost:8000" />
+        Tracker API URL
+        <input id="api-base" type="url" placeholder="https://job-tracker-api-a8gp.onrender.com" />
       </label>
       <label>
         Token
@@ -30,6 +30,7 @@
       </label>
       <p class="muted">
         In the tracker, open the account menu and choose <strong>Copy extension token</strong>.
+        The URL above is the <strong>API</strong>, not the site you sign in to.
       </p>
       <button id="save-settings" class="primary">Connect</button>
       <p id="settings-status" role="status" aria-live="polite"></p>
