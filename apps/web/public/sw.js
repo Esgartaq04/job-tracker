@@ -31,7 +31,9 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   // Never cache the API: an out-of-date board that looks live is the worst outcome.
-  if (url.pathname.startsWith("/api/")) return;
+  // Same-origin behind nginx or the Vite proxy; a different origin once VITE_API_ORIGIN
+  // points the SPA at a separately hosted API, which also covers the SSE stream.
+  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
   // Navigations: network first, shell as the fallback when offline.
   if (request.mode === "navigate") {

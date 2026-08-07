@@ -148,3 +148,66 @@ def test_the_email_digest_lists_every_reminder(auth_client: TestClient, db_sessi
 
     assert "1 overdue" in subject and "1 due today" in subject
     assert "Stripe" in body and "Ramp" in body
+
+
+class TestSweepEndpoint:
+    """The sweep endpoint is what replaces the arq cron when there's no Redis to run a
+    worker, so a scheduler can nudge everyone once a day."""
+
+    def test_it_is_invisible_until_a_secret_is_configured(self, auth_client: TestClient):
+        # Default settings have no secret — the route must not advertise itself.
+        assert auth_client.post(f"{API}/reminders/sweep").status_code == 404
+        assert (
+            auth_client.post(
+                f"{API}/reminders/sweep", headers={"x-sweep-secret": "anything"}
+            ).status_code
+            == 404
+        )
+
+    def test_a_wrong_secret_is_a_404_not_a_403(self, auth_client: TestClient, monkeypatch):
+        """A 403 would confirm the endpoint exists and that the secret is worth guessing."""
+        from src.routers import reminders as router
+
+        monkeypatch.setattr(router.settings, "sweep_secret", "s3cret", raising=False)
+        response = auth_client.post(f"{API}/reminders/sweep", headers={"x-sweep-secret": "wrong"})
+        assert response.status_code == 404
+
+    def test_the_right_secret_runs_the_same_sweep_the_worker_would(
+        self, auth_client: TestClient, db_session, monkeypatch
+    ):
+        from src.routers import reminders as router
+        from src.services import notify
+
+        notified: list[tuple] = []
+        monkeypatch.setattr(
+            notify, "notify_user", lambda user_id, email, found: notified.append((email, found))
+        )
+        monkeypatch.setattr(router.settings, "sweep_secret", "s3cret", raising=False)
+
+        overdue = create(auth_client, company="Stripe")
+        set_due(db_session, overdue["id"], days=-3)
+
+        response = auth_client.post(f"{API}/reminders/sweep", headers={"x-sweep-secret": "s3cret"})
+        assert response.status_code == 200
+        assert response.json() == {"users": 1, "notified": 1, "reminders": 1}
+
+        assert len(notified) == 1
+        email, found = notified[0]
+        assert email == "esteven@example.com"
+        assert found[0].kind is reminder_service.ReminderKind.overdue
+
+    def test_a_user_with_nothing_pending_is_not_nagged(self, auth_client: TestClient, monkeypatch):
+        from src.routers import reminders as router
+        from src.services import notify
+
+        notified: list[tuple] = []
+        monkeypatch.setattr(
+            notify, "notify_user", lambda user_id, email, found: notified.append((email, found))
+        )
+        monkeypatch.setattr(router.settings, "sweep_secret", "s3cret", raising=False)
+
+        create(auth_client, company="Datadog")  # fresh card, no due date
+
+        response = auth_client.post(f"{API}/reminders/sweep", headers={"x-sweep-secret": "s3cret"})
+        assert response.json() == {"users": 1, "notified": 0, "reminders": 0}
+        assert notified == []

@@ -54,6 +54,21 @@ Not built: column virtualization (`@tanstack/react-virtual`) — the board loads
 200 cards per column today and nothing has been slow yet, so it stays on the list rather
 than in the code.
 
+## Deployment readiness ✅ (not yet deployed)
+
+The four changes [`DEPLOYMENT.md`](./DEPLOYMENT.md) §3 asks for are done: a build-time
+`VITE_API_ORIGIN` so the SPA can live on a different host than the API, `[llm]` in the API
+image so Tier 4 isn't silently dead in the container, a runtime host permission for the
+extension, and `POST /reminders/sweep` so a free scheduler can do the worker's daily job
+where there's no Redis. `render.yaml`, `apps/web/vercel.json` and
+`.github/workflows/reminders.yml` are committed.
+
+Verified rather than assumed: the SPA built for one origin and served from another signs
+in, loads the board and `/reminders`, and holds the SSE stream open with no CORS errors.
+
+**Nothing is deployed.** That step needs accounts — Vercel, Render, Neon — and the
+secrets that go with them.
+
 ## Phase 4 / Phase 5 — not started
 
 Skill-gap analysis and Gmail integration are deliberately untouched. The schema is ready
@@ -107,6 +122,28 @@ That doubles as the menu equivalent §7.6 requires.
 templates agree, and free-text statuses like "Online Assessment" or "No response" map
 onto the enum. But a row with neither a company nor a title is skipped and reported by
 line number — inventing an identity would put a card on the board that means nothing.
+
+**The extension asks for its host when you connect, not when you install.** The design
+document's fix was `host_permissions` in the manifest, but each person may point at a
+different API and the manifest is a committed file. `optional_host_permissions` plus a
+request from the Connect button grants exactly the origin the user typed, from the gesture
+Chrome requires, with no per-deployment edit. Installing the extension still grants
+nothing at all — `test/run.mjs` asserts that, because it's the kind of property that
+erodes quietly.
+
+**A missing optional dependency is tested for, not just fixed.** Tier 4 was dead in the
+container because `anthropic` sits behind an extra the image didn't install, and
+`tiers/llm.py` degrades on `ImportError` rather than raising — so nothing failed, the
+pipeline just quietly stopped one tier early. `tests/test_packaging.py` now reads the
+Dockerfile and asserts the extras it installs actually exist and include `llm`. A silent
+failure needs a test more than a loud one does.
+
+**The sweep has one definition and two callers.** The doc suggested copying the worker's
+sweep body into the endpoint. It lives in `services/reminders.py::sweep` instead, called
+by both the arq cron and the HTTP route, because two copies of "who gets nagged" would
+diverge the first time either changed. Both failure modes of the endpoint return 404 —
+an unconfigured deployment shouldn't advertise the route, and a prober shouldn't learn
+that the secret is worth guessing.
 
 **Board ordering uses float fractional indices.** A move is a single-row UPDATE. When two
 neighbours get within `1e-6` of each other the column is re-spaced on the spot, inside the

@@ -1,4 +1,9 @@
-const API_BASE = "/api/v1";
+// Same-origin in dev (the Vite proxy) and in Docker (nginx), so this is empty in both.
+// Set VITE_API_ORIGIN when the SPA is served from a different host than the API — e.g.
+// Vercel in front of Render. Vite inlines it at build time: changing it in a dashboard
+// does nothing until the next deploy.
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/$/, "");
+const API_BASE = `${API_ORIGIN}/api/v1`;
 const TOKEN_KEY = "job-tracker.token";
 
 export class ApiError extends Error {

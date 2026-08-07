@@ -37,31 +37,20 @@ async def ingest_application(_ctx: dict, application_id: str) -> None:
 
 
 def _sweep() -> dict[str, int]:
-    """Notify every user about what needs attention. Runs in a thread — sync DB."""
-    from sqlalchemy import select
+    """Runs in a thread — the sweep and the session are both synchronous.
 
+    The sweep itself lives in `src.services.reminders` so that this cron and the
+    `POST /reminders/sweep` endpoint (for deployments with no Redis, hence no worker)
+    can't drift apart. See docs/DEPLOYMENT.md §3.4.
+    """
     from src.core.db import session_scope
-    from src.models import User
-    from src.services import reminders as reminder_service
-    from src.services.notify import notify_user
+    from src.services.reminders import sweep
 
     db = session_scope()
-    counts = {"users": 0, "notified": 0, "reminders": 0}
     try:
-        for user in db.scalars(select(User)).all():
-            counts["users"] += 1
-            found = reminder_service.collect(db, user.id)
-            if not found:
-                continue
-            counts["notified"] += 1
-            counts["reminders"] += len(found)
-            notify_user(user.id, user.email, found)
-            logger.info(
-                "reminders for %s: %s", user.email, reminder_service.digest(found)
-            )
+        return sweep(db)
     finally:
         db.close()
-    return counts
 
 
 async def sweep_reminders(_ctx: dict) -> dict[str, int]:

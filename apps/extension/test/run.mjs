@@ -16,6 +16,15 @@ import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright";
 
+import { normalizeBase, originPattern } from "../src/config.js";
+
+// The host pattern decides what the extension may reach, so it gets checked before a
+// browser is involved. A trailing slash or a path must not widen or break it.
+assert.equal(originPattern("https://api.example.com"), "https://api.example.com/*");
+assert.equal(originPattern("https://api.example.com/"), "https://api.example.com/*");
+assert.equal(originPattern("http://localhost:8000/api/v1"), "http://localhost:8000/*");
+assert.equal(normalizeBase("  https://api.example.com//  "), "https://api.example.com");
+
 const here = dirname(fileURLToPath(import.meta.url));
 // A fresh posting id per run: re-saving a tracked URL correctly focuses the existing
 // card instead of re-extracting it, which would make this test order-dependent.
@@ -101,6 +110,21 @@ try {
   // 4. The extension is actually loaded (its service worker registered).
   const [worker] = context.serviceWorkers();
   assert.ok(worker, "extension service worker should be running");
+
+  // 5. The API host is not granted by installing — it is granted by pressing Connect.
+  // If this ever starts out true, the manifest has quietly widened.
+  const origin = new URL(API).origin;
+  const granted = await worker.evaluate(
+    (pattern) => chrome.permissions.contains({ origins: [pattern] }),
+    `${origin}/*`,
+  );
+  assert.equal(granted, false, "the tracker host must be an opt-in permission, not a default");
+
+  // And nothing else is granted either — no job site is readable without a click.
+  const anySite = await worker.evaluate(() =>
+    chrome.permissions.contains({ origins: ["https://www.linkedin.com/*"] }),
+  );
+  assert.equal(anySite, false, "no host permission for job sites — activeTab is the whole point");
 
   console.log("✓ extension captured:", application.company, "—", application.title);
   console.log("  canonical:", application.canonical_url);

@@ -1,0 +1,49 @@
+name: Daily reminders
+
+# The arq cron in apps/worker only runs where Redis is deployed. In the free deployment
+# (docs/DEPLOYMENT.md) there is no Redis and therefore no worker, so this calls the same
+# sweep over HTTP. It leaves a run log, which is the point — a cron you can't see failing
+# is worse than no cron.
+#
+# Needs two repository secrets: API_URL (e.g. https://job-tracker-api.onrender.com) and
+# SWEEP_SECRET (must match the API's SWEEP_SECRET). Without them the job is skipped
+# rather than failing every morning.
+
+on:
+  schedule:
+    # 13:00 UTC ≈ 8am Chicago in summer, 7am in winter. GitHub runs scheduled jobs late
+    # under load, so treat this as "some time that morning" rather than an alarm clock.
+    - cron: "0 13 * * *"
+  workflow_dispatch: # so you can prove it works without waiting a day
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the sweep endpoint
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          SWEEP_SECRET: ${{ secrets.SWEEP_SECRET }}
+        run: |
+          if [ -z "$API_URL" ] || [ -z "$SWEEP_SECRET" ]; then
+            echo "API_URL or SWEEP_SECRET is not set — nothing to sweep. See docs/DEPLOYMENT.md §3.4."
+            exit 0
+          fi
+
+          # The free instance may be asleep; wake it before the real call so a 30-60s
+          # cold start doesn't read as a failed sweep.
+          curl -sS --max-time 90 -o /dev/null "${API_URL%/}/healthz" || true
+
+          code=$(curl -sS --max-time 120 -o body.json -w '%{http_code}' \
+            -X POST "${API_URL%/}/api/v1/reminders/sweep" \
+            -H "x-sweep-secret: $SWEEP_SECRET")
+
+          echo "HTTP $code"; cat body.json; echo
+
+          # 404 is what a wrong or unset secret looks like — deliberately indistinguishable
+          # from "no such route" to anyone probing, but here it means check the secrets.
+          if [ "$code" = "404" ]; then
+            echo "::error::Sweep refused. SWEEP_SECRET here must match the API's."
+            exit 1
+          fi
+          [ "$code" = "200" ] || exit 1

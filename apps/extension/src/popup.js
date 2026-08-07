@@ -1,9 +1,16 @@
-const DEFAULTS = { apiBase: "http://localhost:8000", token: "" };
+import {
+  DEFAULTS,
+  getSettings as settings,
+  hasApiPermission,
+  normalizeBase,
+  requestApiPermission,
+} from "./config.js";
 
 const el = (id) => document.getElementById(id);
 
-async function settings() {
-  return { ...DEFAULTS, ...(await chrome.storage.sync.get(DEFAULTS)) };
+function fail(message) {
+  el("settings-status").textContent = message;
+  el("settings-status").className = "error";
 }
 
 function show(section) {
@@ -19,9 +26,15 @@ async function render() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   el("page").textContent = tab?.title ?? tab?.url ?? "";
 
-  // No token means nothing works, so open straight into settings rather than
-  // letting the user press a button that can only fail.
-  show(token ? "save" : "settings");
+  // No token — or a token whose host we're not allowed to reach — means nothing works,
+  // so open straight into settings rather than letting the user press a button that can
+  // only fail. Pressing Connect from here is what grants the host.
+  const ready = Boolean(token) && (await hasApiPermission(apiBase));
+  if (token && !ready) {
+    el("settings-status").textContent = "Press Connect to allow access to the tracker.";
+    el("settings-status").className = "";
+  }
+  show(ready ? "save" : "settings");
 }
 
 async function save(markApplied) {
@@ -46,25 +59,31 @@ el("save-applied-btn").addEventListener("click", () => save(true));
 el("settings-btn").addEventListener("click", () => show("settings"));
 
 el("save-settings").addEventListener("click", async () => {
-  const apiBase = el("api-base").value.trim() || DEFAULTS.apiBase;
+  const apiBase = normalizeBase(el("api-base").value) || DEFAULTS.apiBase;
   const token = el("token").value.trim();
 
-  if (!token) {
-    el("settings-status").textContent = "Paste a token first";
-    el("settings-status").className = "error";
-    return;
+  if (!token) return fail("Paste a token first");
+
+  try {
+    new URL(apiBase);
+  } catch {
+    return fail("That doesn't look like a URL — include https://");
+  }
+
+  // Ask for the one origin the user typed. This click is the gesture Chrome requires,
+  // and without the grant every later request is an opaque CORS failure.
+  if (!(await hasApiPermission(apiBase)) && !(await requestApiPermission(apiBase))) {
+    return fail("Access to the tracker was declined, so saving can't work.");
   }
 
   // Verify before storing, so a typo surfaces here rather than on the first save.
   try {
-    const response = await fetch(`${apiBase.replace(/\/$/, "")}/api/v1/auth/me`, {
+    const response = await fetch(`${apiBase}/api/v1/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new Error(`Tracker returned ${response.status}`);
   } catch (error) {
-    el("settings-status").textContent = `Couldn't reach the tracker: ${error.message}`;
-    el("settings-status").className = "error";
-    return;
+    return fail(`Couldn't reach the tracker: ${error.message}`);
   }
 
   await chrome.storage.sync.set({ apiBase, token });

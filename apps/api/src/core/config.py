@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     reminder_email_enabled: bool = False
     reminder_sweep_hour_utc: int = 13  # ~8am ET, when a follow-up is worth seeing
 
+    # Shared secret for POST /reminders/sweep, so an external scheduler can do the
+    # worker's daily job when there's no Redis and therefore no worker. Unset means the
+    # route 404s — a deployment that never configures it exposes nothing.
+    sweep_secret: str | None = None
+
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")

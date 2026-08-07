@@ -1,10 +1,7 @@
+import { getSettings, hasApiPermission, normalizeBase } from "./config.js";
 import { collectPosting } from "./extract.js";
 
-const DEFAULTS = { apiBase: "http://localhost:8000", token: "" };
-
-export async function getSettings() {
-  return { ...DEFAULTS, ...(await chrome.storage.sync.get(DEFAULTS)) };
-}
+export { getSettings };
 
 /**
  * Read the active tab and hand it to the tracker.
@@ -17,6 +14,11 @@ export async function savePosting({ tabId, markApplied = false } = {}) {
   const { apiBase, token } = await getSettings();
   if (!token) {
     throw new Error("Not connected — open the extension and paste your tracker token.");
+  }
+  // A service worker has no user gesture, so it can't request the permission itself —
+  // say what to press rather than failing later as an opaque CORS error.
+  if (!(await hasApiPermission(apiBase))) {
+    throw new Error("Allow access to the tracker: open Settings and press Connect.");
   }
 
   const tab = tabId
@@ -32,7 +34,7 @@ export async function savePosting({ tabId, markApplied = false } = {}) {
     func: collectPosting,
   });
 
-  const response = await fetch(`${apiBase.replace(/\/$/, "")}/api/v1/ingest/from-dom`, {
+  const response = await fetch(`${normalizeBase(apiBase)}/api/v1/ingest/from-dom`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({
