@@ -31,8 +31,12 @@ services:
 
       # Pydantic-settings parses this as a JSON list. Add the custom domain when there
       # is one; a mismatch here looks exactly like a dead API from the browser console.
+      #
+      # NO TRAILING SLASH. A browser's Origin header is scheme://host[:port] and never
+      # carries a path, and Starlette compares it to this list by exact string equality —
+      # so ".../" matches nothing and every request is blocked.
       - key: CORS_ORIGINS
-        value: '["https://job-tracker-64ei.vercel.app/"]'
+        value: '["https://job-tracker-64ei.vercel.app"]'
 
       - key: ENVIRONMENT
         value: production
