@@ -26,6 +26,7 @@ src/routers/applications.py
 src/routers/auth.py
 src/routers/events.py
 src/routers/ingest.py
+src/routers/reminders.py
 src/routers/search.py
 src/routers/stats.py
 src/schemas/__init__.py
@@ -33,11 +34,15 @@ src/schemas/application.py
 src/schemas/auth.py
 src/schemas/extraction.py
 src/schemas/ingest.py
+src/schemas/reminders.py
 src/schemas/stats.py
 src/services/__init__.py
 src/services/applications.py
+src/services/csv_import.py
 src/services/events.py
+src/services/notify.py
 src/services/ranking.py
+src/services/reminders.py
 src/services/transitions.py
 src/services/ingestion/__init__.py
 src/services/ingestion/fetch.py
@@ -57,3 +62,9 @@ src/services/ingestion/tiers/browser.py
 src/services/ingestion/tiers/generic.py
 src/services/ingestion/tiers/jsonld.py
 src/services/ingestion/tiers/llm.py
+tests/test_api.py
+tests/test_csv_import.py
+tests/test_normalize.py
+tests/test_ranking.py
+tests/test_reminders.py
+tests/test_tiers.py

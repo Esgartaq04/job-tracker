@@ -1,6 +1,6 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
-pydantic>=2.7
+pydantic[email]>=2.7
 pydantic-settings>=2.3
 sqlalchemy>=2.0.30
 alembic>=1.13
@@ -12,6 +12,9 @@ selectolax>=0.3.21
 python-multipart>=0.0.9
 redis>=5.0
 arq>=0.26
+
+[browser]
+playwright>=1.44
 
 [dev]
 pytest>=8.2
