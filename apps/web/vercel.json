@@ -1,0 +1,27 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+
+  "//": "No rewrite to the API. /api/v1/events is a long-lived SSE stream and a proxy in the path is what breaks those; going cross-origin (VITE_API_ORIGIN) puts nothing between the browser and the stream. See docs/DEPLOYMENT.md §4.3.",
+
+  "rewrites": [{ "source": "/((?!assets/|icons/).*)", "destination": "/index.html" }],
+
+  "headers": [
+    {
+      "//": "The worker must be re-fetched, or a stale one pins the old shell forever.",
+      "source": "/sw.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }]
+    },
+    {
+      "//": "Vite content-hashes these, so they can never be stale.",
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
+}

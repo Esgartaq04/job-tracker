@@ -7,6 +7,10 @@ for four people, at roughly zero, without foreclosing Phase 4 or Phase 5.
 
 Nothing is deployed yet, so there is no migration to plan around — only a first choice.
 
+**Status:** the four code changes in §3 are done, tested, and merged; §4 is the part that
+needs accounts, and the accounts are yours to create. §3.1's cross-origin path has been
+exercised in a browser rather than reasoned about — see the note in §4.3.
+
 ---
 
 ## 1. What the repo already decided for you
@@ -21,9 +25,10 @@ before the tiers run. `services/events.py` falls back to an in-process `EventHub
 functions the ingest thread is killed at response time and the SSE hub isn't shared
 between invocations, so **the API cannot go on Vercel Functions** without rewriting both.
 
-**The web app assumes the API is same-origin.** `apps/web/src/api/client.ts` hardcodes
+**The web app assumed the API was same-origin.** `apps/web/src/api/client.ts` hardcoded
 `const API_BASE = "/api/v1"`; in dev the Vite proxy provides it, in Docker `nginx.conf`
-provides it. Vercel provides neither. Section 3 has the three-line fix.
+provides it. Vercel provides neither. §3.1 replaced it with a build-time origin that
+defaults to empty, so both existing setups are untouched.
 
 **Auth makes cross-origin easy.** The token is a bearer JWT in `localStorage`, and
 `/events` accepts `?access_token=` because `EventSource` can't set headers. No cookies
@@ -31,10 +36,10 @@ means no `SameSite` problem, no subdomain requirement — just `CORS_ORIGINS`.
 
 **Redis is optional, and losing it costs exactly one thing.** Without it: ingestion runs
 in-process, SSE runs in-memory, the fetch cache is per-process. All fine at one instance.
-What you actually lose is the **daily reminder sweep**, which only exists as an arq cron in
-`apps/worker/worker.py`. `GET /reminders` computes on demand, so the needs-attention bar
-and the whole reminders feature still work — you just don't get an unprompted daily push.
-Section 3.4 adds that back for free if you want it.
+What you actually lose is the **daily reminder sweep**, which existed only as an arq cron
+in `apps/worker/worker.py`. `GET /reminders` computes on demand, so the needs-attention bar
+and the whole reminders feature still work — what goes missing is the unprompted daily
+push. §3.4 adds that back over HTTP, on a free scheduler.
 
 ---
 
@@ -68,85 +73,82 @@ scale-to-zero). This app is the record of where you applied.
 
 ---
 
-## 3. Changes to make before deploying
+## 3. Code changes — done
 
-Four diffs. The first two are required; the third is required if anyone uses the
-extension; the fourth is optional.
+All four are now in the repo, so this section is a record of what changed and why rather
+than a to-do list. Nothing here alters local development or `docker compose up`: both
+still run same-origin with no configuration.
 
-### 3.1 Make the API origin configurable (required)
+### 3.1 The API origin is configurable
 
-Two files hardcode the path. `client.ts`:
+`apps/web/src/api/client.ts` builds its base from an environment variable that defaults
+to empty, which is the same-origin path:
 
-```diff
--const API_BASE = "/api/v1";
-+// Same-origin in dev (Vite proxy) and in Docker (nginx). Set VITE_API_ORIGIN when the
-+// SPA is served from a different host than the API — e.g. Vercel in front of Render.
-+const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "";
-+const API_BASE = `${API_ORIGIN}/api/v1`;
+```ts
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/$/, "");
+const API_BASE = `${API_ORIGIN}/api/v1`;
 ```
 
-and `hooks.ts:113`, where CSV import builds its own multipart request outside `client.ts`:
+`hooks.ts` no longer builds its own URL for the CSV upload — it imports `API_BASE` like
+everything else, so there is one place that knows where the API lives. `public/sw.js`
+also skips any cross-origin request rather than only `/api/` paths, which keeps the
+service worker out of the way of both the API and the SSE stream once they move hosts.
 
-```diff
--      const response = await fetch("/api/v1/applications/import", {
-+      const response = await fetch(`${API_BASE}/applications/import`, {
-```
+`apps/web/.env.example` documents the variable. Leave it unset locally and in Docker.
 
-`API_BASE` is already exported from `client.ts`; import it there. Leave `VITE_API_ORIGIN`
-unset locally and in `docker compose`, and both keep working unchanged.
-
-Vite inlines `import.meta.env` **at build time**. Changing it in the Vercel dashboard
+Vite inlines `import.meta.env` **at build time** — changing it in the Vercel dashboard
 without redeploying changes nothing.
 
-### 3.2 Install the `llm` extra in the API image (required if you want Tier 4)
+### 3.2 The image installs the `llm` extra
 
-`apps/api/pyproject.toml` puts `anthropic` behind an optional extra, and
-`apps/api/Dockerfile` runs `pip install .`. So `tiers/llm.py` raises on
-`import anthropic` and Tier 4 is dead in the container **even with a key set** — the
-pipeline silently stops at Tier 2.
+`apps/api/Dockerfile` now runs `pip install ".[llm]"`. Without it, Tier 4 was dead in the
+container even with `ANTHROPIC_API_KEY` set — and dead *quietly*: `tiers/llm.py` catches
+the `ImportError`, logs one INFO line, and returns `None`, so the pipeline just stopped
+at Tier 2 and every posting looked a little worse than it should have.
 
-```diff
--RUN pip install --upgrade pip && pip install .
-+RUN pip install --upgrade pip && pip install ".[llm]"
+That silence is why `tests/test_packaging.py` now parses the Dockerfile and asserts the
+extras it installs exist in `pyproject.toml`, that `llm` is among them, and that
+`browser` is not — Playwright's download will not fit a 512 MB instance.
+
+### 3.3 The extension asks for one host, at runtime
+
+The problem is real: the extension's `fetch` to the API is an ordinary cross-origin
+request from `chrome-extension://<id>`, and an unpacked install gets a different id on
+every machine, so those ids can't be listed in `CORS_ORIGINS`.
+
+Hardcoding `host_permissions` in the manifest would mean editing a committed file per
+deployment, and each person here may point at a different host. Instead the manifest
+declares `optional_host_permissions`, and the popup requests the one origin the user
+typed when they press **Connect** — the user gesture Chrome requires:
+
+```json
+"optional_host_permissions": ["https://*/*", "http://*/*"]
 ```
 
-Do **not** add `[browser]`. Playwright's download is hundreds of megabytes and will not
-fit a 512 MB instance.
+Same exemption, granted for one host, no per-deployment manifest edit. The service worker
+can't request permission (no gesture), so `savePosting` checks first and says "open
+Settings and press Connect" instead of failing as an opaque CORS error. `test/run.mjs`
+asserts that installing the extension grants **nothing** — neither the API host nor any
+job site.
 
-### 3.3 Give the extension permission to reach the API (required for the extension)
+### 3.4 A sweep endpoint for an external scheduler
 
-`apps/extension/manifest.json` has no `host_permissions`, so its `fetch` to
-`/api/v1/ingest/from-dom` is an ordinary cross-origin request subject to CORS from
-`chrome-extension://<id>` — and an unpacked install gets a **different id on every
-machine**, so you can't just list them in `CORS_ORIGINS`.
+`POST /api/v1/reminders/sweep`, guarded by the `x-sweep-secret` header against
+`SWEEP_SECRET`. Both "no secret configured" and "wrong secret" return **404**, so an
+unconfigured deployment doesn't advertise the route and a prober learns nothing; the
+comparison is constant-time. It's `include_in_schema=False`, so it stays out of `/docs`.
 
-Cheapest fix, one line, and it doesn't widen access to any job site:
+The sweep itself moved into `src/services/reminders.py::sweep`, which the arq cron in
+`apps/worker/worker.py` now calls too — one definition, so the Redis and no-Redis
+deployments can't drift.
 
-```diff
-   "permissions": ["activeTab", "scripting", "storage"],
-+  "host_permissions": ["https://<your-api-host>/*"],
-```
+`.github/workflows/reminders.yml` calls it daily at 13:00 UTC and on demand
+(`workflow_dispatch`). It needs two repository secrets, `API_URL` and `SWEEP_SECRET`; with
+either missing the job exits successfully and says so, rather than failing every morning.
+It pings `/healthz` first so a cold start doesn't read as a failed sweep.
 
-A granted host permission exempts the extension's own requests from CORS. The README's
-permissions table should gain a row saying the host is the tracker's API and nothing else.
-
-### 3.4 Optional: a sweep endpoint so an external cron can do the worker's job
-
-Without Redis, `sweep_reminders` never runs. If you want the daily push and the (currently
-logging-only) digest, add a route that runs the same function behind a shared secret:
-
-```python
-# routers/reminders.py
-@router.post("/sweep", include_in_schema=False)
-def sweep(request: Request, db: DbSession) -> dict:
-    if request.headers.get("x-sweep-secret") != os.environ["SWEEP_SECRET"]:
-        raise HTTPException(status_code=404)
-    # the body of worker.py::_sweep, unchanged
-```
-
-Then point a free scheduler at it once a day — GitHub Actions on a `schedule:` trigger is
-free on a public repo and leaves a log of whether it ran. When Redis arrives later, the arq
-cron takes over and this route becomes redundant rather than wrong.
+Remember this only restores the **unprompted** daily push. `GET /reminders` computes on
+demand, so the needs-attention bar works with none of this configured.
 
 ---
 
@@ -170,31 +172,14 @@ Leave it at one — with no Redis, the SSE hub and the thread pool live in proce
 a second worker would mean a browser connected to worker A never sees an ingest running on
 worker B.
 
-A Render blueprint, roughly (field names have drifted across Render versions — check the
-current blueprint spec):
+The blueprint is committed at **`render.yaml`** in the repo root: point Render at the
+repo and it reads that file. Every secret is `sync: false`, so Render prompts for it
+rather than the repo carrying it; `JWT_SECRET` is `generateValue: true`, so the
+`dev-secret-change-me` default can't reach production by inattention. Edit
+`CORS_ORIGINS` to your real Vercel URL before the first deploy.
 
-```yaml
-# render.yaml
-services:
-  - type: web
-    name: job-tracker-api
-    runtime: docker
-    plan: free
-    rootDir: apps/api
-    dockerfilePath: ./Dockerfile
-    healthCheckPath: /healthz
-    envVars:
-      - key: DATABASE_URL      # Neon pooled URL
-        sync: false
-      - key: JWT_SECRET
-        generateValue: true
-      - key: CORS_ORIGINS
-        value: '["https://<your-app>.vercel.app"]'
-      - key: ENVIRONMENT
-        value: production
-      - key: ANTHROPIC_API_KEY
-        sync: false
-```
+Blueprint field names have drifted across Render versions — if it refuses the file, check
+the current spec rather than assuming the file is wrong.
 
 Every setting, with the real defaults from `core/config.py`:
 
@@ -207,7 +192,8 @@ Every setting, with the real defaults from `core/config.py`:
 | `ANTHROPIC_API_KEY` | optional | Tier 4 only. `llm_monthly_call_cap` already caps it at 500 calls/month |
 | `INGEST_BROWSER_ENABLED` | leave unset | Read directly by `tiers/browser.py`; anything but `1`/`true`/`yes` is off |
 | `REMINDER_EMAIL_ENABLED` | `false` | `notify.py` has no provider — a `true` here changes nothing but the log |
-| `REMINDER_SWEEP_HOUR_UTC` | `13` | 8am Chicago in summer, 7am in winter. Only matters once §3.4 or a worker exists |
+| `REMINDER_SWEEP_HOUR_UTC` | `13` | 8am Chicago in summer, 7am in winter. Read by the **worker's** arq cron only; the GitHub Actions schedule has its own time |
+| `SWEEP_SECRET` | 32 random bytes, or unset | Must match the `SWEEP_SECRET` repository secret. Unset means `POST /reminders/sweep` 404s — the safe default |
 | `ENVIRONMENT` | `production` | Surfaced by `/healthz` |
 
 Turn off preview environments. Each one is another process against the same database, and
@@ -215,10 +201,19 @@ on the free plan they eat the 750 hours.
 
 ### 4.3 The web app on Vercel
 
-Root directory `apps/web`, framework preset Vite, build `npm run build`, output `dist`.
+Set the project's root directory to `apps/web`; the rest is in the committed
+**`apps/web/vercel.json`** — Vite preset, `npm run build`, `dist`, an SPA rewrite, and
+cache headers that keep `sw.js` and the web manifest revalidating while content-hashed
+assets stay immutable. A stale service worker pins the old shell indefinitely, which is
+the kind of bug you debug for an hour and fix in one header.
+
 One environment variable: `VITE_API_ORIGIN=https://<your-api-host>` (no trailing slash).
 Then add that Vercel URL to `CORS_ORIGINS` on the API and restart it — do both in the same
 sitting, because a CORS mismatch looks exactly like a dead API from the browser console.
+
+This path is verified, not assumed: with the SPA built for one origin and served from
+another, sign-in, the board, `/reminders`, and the SSE stream all connect with no CORS
+errors in the console.
 
 **Don't route the API through a Vercel rewrite.** It's the tempting no-code-change option,
 but `/api/v1/events` is a long-lived SSE stream and a proxy in the path is precisely what
@@ -239,7 +234,9 @@ four users is not worth an OAuth provider.
 
 Each person loads `apps/extension` unpacked, pastes their token from the account menu, and
 sets the tracker URL to the **API** host, not the Vercel one — `background.js` posts
-directly to `{apiBase}/api/v1/ingest/from-dom`.
+directly to `{apiBase}/api/v1/ingest/from-dom`. Pressing **Connect** raises a Chrome
+permission prompt for that one host (§3.3); accepting it is what makes saving work, and
+the popup refuses to store a connection without it.
 
 ### 4.5 Keepalive, if you're on the free tier
 

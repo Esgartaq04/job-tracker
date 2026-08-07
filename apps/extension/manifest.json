@@ -6,7 +6,9 @@
 
   "permissions": ["activeTab", "scripting", "storage"],
 
-  "//": "No host_permissions: the extension only reads a tab after you click it (activeTab), and only posts to the API you configure.",
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+
+  "//": "No host_permissions for job sites: the extension only reads a tab after you click it (activeTab). The optional entry is granted for one origin — the tracker API you configure — when you press Connect, because an unpacked install's chrome-extension:// id changes per machine and so cannot be listed in the API's CORS_ORIGINS.",
 
   "action": {
     "default_title": "Save to tracker",

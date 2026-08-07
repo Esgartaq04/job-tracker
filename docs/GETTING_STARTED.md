@@ -1,6 +1,7 @@
 # Getting started
 
-Two ways to run it. The first needs nothing but Python and Node.
+Two ways to run it. The first needs nothing but Python and Node. For putting it on the
+internet, see [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
 ## 1. Local, no Docker
 
@@ -51,7 +52,14 @@ Everything is an environment variable; defaults are in `apps/api/src/core/config
 | `STALE_WARN_DAYS` / `STALE_DIM_DAYS` | `14` / `30` | When a card goes amber, then grey |
 | `REMINDER_EMAIL_ENABLED` | `false` | Email digests. Needs a provider — see below |
 | `REMINDER_SWEEP_HOUR_UTC` | `13` | When the worker's daily reminder sweep runs |
+| `SWEEP_SECRET` | *(unset)* | Enables `POST /reminders/sweep` for an external scheduler. Unset means that route 404s |
 | `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON list |
+
+The web app has one of its own, in `apps/web/.env.example`:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `VITE_API_ORIGIN` | *(empty)* | Origin of the API, no trailing slash. Leave it unset for local dev and Docker — both serve the API same-origin. Set it only when the SPA and the API are on different hosts. Vite inlines it at **build** time |
 
 ## Tests
 
@@ -105,10 +113,15 @@ gone quiet appears in the bar above the board, and the account menu can turn on 
 notifications.
 
 The worker runs a sweep each day at `REMINDER_SWEEP_HOUR_UTC` and pushes to any
-connected browser over SSE. **Email is not wired to a provider**: it sits behind the
-`Sender` interface in `src/services/notify.py` with an implementation that logs what it
-would have sent. To turn it on, implement `Sender` against your provider, return it from
-`get_sender()`, and set `REMINDER_EMAIL_ENABLED=true`.
+connected browser over SSE. Where there's no Redis — and so no worker — set
+`SWEEP_SECRET` and have a scheduler `POST /api/v1/reminders/sweep` with an
+`x-sweep-secret` header instead; `.github/workflows/reminders.yml` does exactly that.
+Both run the same function.
+
+**Email is not wired to a provider**: it sits behind the `Sender` interface in
+`src/services/notify.py` with an implementation that logs what it would have sent. To
+turn it on, implement `Sender` against your provider, return it from `get_sender()`, and
+set `REMINDER_EMAIL_ENABLED=true`.
 
 ### Sites that block scraping
 

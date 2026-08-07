@@ -5,11 +5,13 @@ I do today". Both land here so the board badge, the worker sweep, and any future
 all agree on the definition rather than each inventing one.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.core.config import settings
@@ -17,6 +19,8 @@ from src.models import Application
 from src.models.enums import TERMINAL_STATUSES
 from src.models.util import as_utc, utcnow
 from src.services.applications import compute_staleness, user_applications
+
+logger = logging.getLogger(__name__)
 
 
 class ReminderKind(StrEnum):
@@ -114,3 +118,28 @@ def digest(reminders: list[Reminder]) -> str:
     if not parts and counts.get(ReminderKind.upcoming):
         parts.append(f"{counts[ReminderKind.upcoming]} coming up")
     return ", ".join(parts)
+
+
+def sweep(db: Session) -> dict[str, int]:
+    """Notify every user about what needs attention.
+
+    Two callers, one definition: the arq cron in `apps/worker/worker.py` when Redis is
+    deployed, and `POST /reminders/sweep` when it isn't (docs/DEPLOYMENT.md §3.4). Both
+    are idempotent — running it twice in a day sends the same digest again, which is a
+    better failure than a day with no digest at all.
+    """
+    # Imported here: notify imports this module, so a module-level import would cycle.
+    from src.models import User
+    from src.services.notify import notify_user
+
+    counts = {"users": 0, "notified": 0, "reminders": 0}
+    for user in db.scalars(select(User)).all():
+        counts["users"] += 1
+        found = collect(db, user.id)
+        if not found:
+            continue
+        counts["notified"] += 1
+        counts["reminders"] += len(found)
+        notify_user(user.id, user.email, found)
+        logger.info("reminders for %s: %s", user.email, digest(found))
+    return counts

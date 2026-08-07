@@ -1,0 +1,51 @@
+# Render blueprint for the API (docs/DEPLOYMENT.md §4.2).
+#
+# The SPA is not here — it goes on Vercel with VITE_API_ORIGIN pointed at this service.
+# Neither is Redis or the worker: without REDIS_URL the API runs ingestion in-process and
+# serves SSE from an in-memory hub, and the daily sweep is covered by
+# .github/workflows/reminders.yml instead.
+#
+# Blueprint field names have drifted across Render versions — check the current spec if
+# it refuses this file.
+
+services:
+  - type: web
+    name: job-tracker-api
+    runtime: docker
+    plan: free
+    region: oregon
+    rootDir: apps/api
+    dockerfilePath: ./Dockerfile
+    # Cheap and touches no database, so keepalive pings don't wake Neon's compute.
+    healthCheckPath: /healthz
+    envVars:
+      # Neon *pooled* connection string, rewritten for SQLAlchemy:
+      #   postgresql+psycopg://user:pass@host/db?sslmode=require
+      # The default is a SQLite file, which on a container with no disk is a database
+      # that vanishes on every deploy.
+      - key: DATABASE_URL
+        sync: false
+
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Pydantic-settings parses this as a JSON list. Add the custom domain when there
+      # is one; a mismatch here looks exactly like a dead API from the browser console.
+      - key: CORS_ORIGINS
+        value: '["https://job-tracker.vercel.app"]'
+
+      - key: ENVIRONMENT
+        value: production
+
+      # Tier 4 (LLM structuring). Optional — without it the pipeline stops at Tier 3 and
+      # falls back to manual paste. llm_monthly_call_cap already caps it at 500/month.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # Must match SWEEP_SECRET in the repository secrets for the reminders workflow.
+      # Leave unset and POST /reminders/sweep 404s, which is the safe default.
+      - key: SWEEP_SECRET
+        sync: false
+
+    # REDIS_URL is deliberately absent: setting it without deploying apps/worker means
+    # ingest jobs enqueue and nothing ever consumes them.

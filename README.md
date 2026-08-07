@@ -2,9 +2,10 @@
 
 > **Status:** Draft v0.1 · **Owner:** Esteven · **Last updated:** 2026-08-04
 
-> **This document is now implemented through Phase 2, with most of Phase 3.**
-> Run it: [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) · What's built and what
-> isn't: [`docs/STATUS.md`](docs/STATUS.md).
+> **This document is now implemented through Phase 3.**
+> Run it: [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) · Ship it:
+> [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) · What's built and what isn't:
+> [`docs/STATUS.md`](docs/STATUS.md).
 >
 > ```bash
 > docker compose up --build       # http://localhost:5173

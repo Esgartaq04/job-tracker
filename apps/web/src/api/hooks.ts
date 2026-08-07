@@ -5,7 +5,7 @@ import {
   type UseMutationResult,
 } from "@tanstack/react-query";
 
-import { api, getToken } from "./client";
+import { API_BASE, api, getToken } from "./client";
 import type {
   Application,
   ApplicationDetail,
@@ -110,7 +110,7 @@ export function useImportCsv() {
     mutationFn: async (file: File): Promise<ImportReport> => {
       const body = new FormData();
       body.append("file", file);
-      const response = await fetch("/api/v1/applications/import", {
+      const response = await fetch(`${API_BASE}/applications/import`, {
         method: "POST",
         headers: { Authorization: `Bearer ${getToken() ?? ""}` },
         body,
