@@ -207,6 +207,21 @@ cache headers that keep `sw.js` and the web manifest revalidating while content-
 assets stay immutable. A stale service worker pins the old shell indefinitely, which is
 the kind of bug you debug for an hour and fix in one header.
 
+Three things about that file, since it carries no comments of its own — Vercel validates
+it with `additionalProperties: false` at every level, so a `"//"` key is a hard error
+("should NOT have additional property") rather than an ignored annotation:
+
+- **The SPA rewrite is a bare catch-all** (`/(.*)` → `/index.html`), which is Vercel's
+  own documented pattern. It doesn't shadow `/sw.js`, `/manifest.webmanifest` or the
+  hashed assets, because static files are matched *before* rewrites; it only catches
+  paths with no file behind them.
+- **There is deliberately no rewrite to the API.** Proxying `/api` through Vercel is the
+  tempting no-code-change option, but `/api/v1/events` is a long-lived SSE stream and a
+  proxy in the path is exactly what breaks those. Going cross-origin via
+  `VITE_API_ORIGIN` puts nothing between the browser and the stream.
+- **`sw.js` must not be cached.** A stale service worker keeps serving the old shell
+  forever, so it's `no-cache, must-revalidate` while `/assets/*` is `immutable`.
+
 One environment variable: `VITE_API_ORIGIN=https://<your-api-host>` (no trailing slash).
 Then add that Vercel URL to `CORS_ORIGINS` on the API and restart it — do both in the same
 sitting, because a CORS mismatch looks exactly like a dead API from the browser console.
