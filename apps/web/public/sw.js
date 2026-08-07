@@ -35,6 +35,10 @@ self.addEventListener("fetch", (event) => {
   // points the SPA at a separately hosted API, which also covers the SSE stream.
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
+  // Vercel's analytics script and beacon are same-origin under /_vercel/. Caching them
+  // would pin a stale script and hide the endpoint behind the shell cache.
+  if (url.pathname.startsWith("/_vercel/")) return;
+
   // Navigations: network first, shell as the fallback when offline.
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).catch(() => caches.match("/")));
