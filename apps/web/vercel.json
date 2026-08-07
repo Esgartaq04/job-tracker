@@ -6,7 +6,8 @@
 
   "//": "No rewrite to the API. /api/v1/events is a long-lived SSE stream and a proxy in the path is what breaks those; going cross-origin (VITE_API_ORIGIN) puts nothing between the browser and the stream. See docs/DEPLOYMENT.md §4.3.",
 
-  "rewrites": [{ "source": "/((?!assets/|icons/).*)", "destination": "/index.html" }],
+  "//rewrites": "Static files are matched before rewrites, so this catch-all doesn't shadow /sw.js, /manifest.webmanifest or the hashed assets — it only catches paths with no file behind them.",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
 
   "headers": [
     {
