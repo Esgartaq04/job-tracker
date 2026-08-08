@@ -254,11 +254,20 @@ independent boards — nothing to configure. If you'd rather not leave registrat
 the internet, the smallest gate is a signup-code check in `routers/auth.py::register`;
 four users is not worth an OAuth provider.
 
-Each person loads `apps/extension` unpacked, pastes their token from the account menu, and
-sets the tracker URL to the **API** host, not the Vercel one — `background.js` posts
-directly to `{apiBase}/api/v1/ingest/from-dom`. Pressing **Connect** raises a Chrome
-permission prompt for that one host (§3.3); accepting it is what makes saving work, and
-the popup refuses to store a connection without it.
+Each person loads `apps/extension` unpacked and pastes their token from the account menu.
+The tracker URL is **pre-filled with the deployed API host** in `src/config.js`, so
+there's nothing to type — but note it is the API host, not the Vercel one:
+`background.js` posts directly to `{apiBase}/api/v1/ingest/from-dom`. Pressing **Connect**
+raises a Chrome permission prompt for that one host (§3.3); accepting it is what makes
+saving work, and the popup refuses to store a connection without it.
+
+If the API ever moves, change `DEFAULTS.apiBase` in `apps/extension/src/config.js` and
+have everyone reload the extension. There's no build step.
+
+The extension is also where the free tier's cold start is most visible — a save is a
+foreground action with no page to look at. It shows a `…` badge while the request is in
+flight, says "Waking the tracker" in the popup after 3 seconds, and gives up at 90. A
+timed-out save loses nothing; retry once the instance is awake.
 
 ### 4.5 Keepalive, if you're on the free tier
 

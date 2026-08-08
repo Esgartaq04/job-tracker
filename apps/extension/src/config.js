@@ -11,7 +11,38 @@
  * from the Connect button — the user's gesture, for exactly the host they typed.
  */
 
-export const DEFAULTS = { apiBase: "http://localhost:8000", token: "" };
+/** The deployed API (docs/DEPLOYMENT.md). Point this at http://localhost:8000 in the
+ *  popup's Settings when working against a local API instead. */
+export const DEFAULTS = {
+  apiBase: "https://job-tracker-api-a8gp.onrender.com",
+  token: "",
+};
+
+/**
+ * The API is on a free instance that sleeps after 15 minutes idle and takes 30–60s to
+ * wake. That's longer than any request should normally take, so requests get a generous
+ * budget and the UI explains the wait rather than looking broken.
+ */
+export const REQUEST_TIMEOUT_MS = 90_000;
+export const SLOW_REQUEST_MS = 3_000;
+
+/** fetch with a deadline, and errors a person can act on. */
+export async function apiFetch(url, init = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("The tracker didn't respond in 90s. It may be starting up — try again.");
+    }
+    // A DNS failure, an offline machine and a missing host permission all land here as
+    // the same opaque "Failed to fetch", so name the likely causes.
+    throw new Error("Couldn't reach the tracker. Check the URL, your connection, and that you pressed Connect.");
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function getSettings() {
   return { ...DEFAULTS, ...(await chrome.storage.sync.get(DEFAULTS)) };

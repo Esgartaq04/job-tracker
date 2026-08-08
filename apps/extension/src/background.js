@@ -1,4 +1,4 @@
-import { getSettings, hasApiPermission, normalizeBase } from "./config.js";
+import { apiFetch, getSettings, hasApiPermission, normalizeBase } from "./config.js";
 import { collectPosting } from "./extract.js";
 
 export { getSettings };
@@ -34,22 +34,33 @@ export async function savePosting({ tabId, markApplied = false } = {}) {
     func: collectPosting,
   });
 
-  const response = await fetch(`${normalizeBase(apiBase)}/api/v1/ingest/from-dom`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      url: result.url,
-      html: result.html,
-      hints: result.hints,
-      fallback_text: result.text,
-      mark_as_applied: markApplied,
-    }),
-  });
+  // A sleeping free instance takes 30–60s to wake, and a keyboard-shortcut save shows no
+  // popup — so the badge has to say "working" or the whole thing looks like it did nothing.
+  await setBadge(tab.id, "…", "#6366f1");
 
-  if (response.status === 401) {
-    throw new Error("Token rejected — reconnect the extension.");
+  let response;
+  try {
+    response = await apiFetch(`${normalizeBase(apiBase)}/api/v1/ingest/from-dom`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        url: result.url,
+        html: result.html,
+        hints: result.hints,
+        fallback_text: result.text,
+        mark_as_applied: markApplied,
+      }),
+    });
+  } catch (error) {
+    await clearBadge(tab.id);
+    throw error;
   }
+
   if (!response.ok) {
+    await clearBadge(tab.id);
+    if (response.status === 401) {
+      throw new Error("Token rejected — reconnect the extension.");
+    }
     throw new Error(`Tracker returned ${response.status}`);
   }
 
@@ -58,10 +69,18 @@ export async function savePosting({ tabId, markApplied = false } = {}) {
   return application;
 }
 
-async function flashBadge(tabId, text, color) {
+async function setBadge(tabId, text, color) {
   await chrome.action.setBadgeText({ tabId, text });
   await chrome.action.setBadgeBackgroundColor({ tabId, color });
-  setTimeout(() => chrome.action.setBadgeText({ tabId, text: "" }), 3000);
+}
+
+async function clearBadge(tabId) {
+  await chrome.action.setBadgeText({ tabId, text: "" });
+}
+
+async function flashBadge(tabId, text, color) {
+  await setBadge(tabId, text, color);
+  setTimeout(() => clearBadge(tabId), 3000);
 }
 
 // Keyboard shortcut: save without opening the popup.
