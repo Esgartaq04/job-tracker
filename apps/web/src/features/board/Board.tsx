@@ -5,8 +5,11 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  pointerWithin,
+  rectIntersection,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -18,6 +21,29 @@ import { STATUS_LABELS } from "../../api/types";
 import { useUi } from "../../lib/store";
 import { Card } from "./Card";
 import { Column } from "./Column";
+
+/**
+ * Where the cursor is, is where you mean to drop.
+ *
+ * `closestCorners` ranks by distance between the dragged rect's corners and each
+ * droppable's. A column is a tall rect, so hovering near its top is still far from its
+ * bottom corners — a small card droppable elsewhere could win, and the intended column
+ * lost to it. `pointerWithin` asks the only question that matches intent: which
+ * droppables contain the pointer? Nested ones come back innermost-first, so hovering a
+ * card targets that card (for ordering) and hovering open space targets the column.
+ *
+ * The fallbacks matter: `pointerWithin` returns nothing once the cursor leaves every
+ * droppable (dragging past the board edge), and the keyboard sensor has no pointer at all.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const pointer = pointerWithin(args);
+  if (pointer.length > 0) return pointer;
+
+  const intersecting = rectIntersection(args);
+  if (intersecting.length > 0) return intersecting;
+
+  return closestCorners(args);
+};
 
 function findApplication(board: BoardData | undefined, id: string): Application | undefined {
   return board?.columns.flatMap((column) => column.items).find((item) => item.id === id);
@@ -116,7 +142,7 @@ export function Board() {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={() => setDraggingId(null)}
