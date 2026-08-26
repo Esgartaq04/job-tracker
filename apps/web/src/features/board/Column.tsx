@@ -5,6 +5,7 @@ import type { BoardColumn } from "../../api/types";
 import { STATUS_LABELS } from "../../api/types";
 import { useUi } from "../../lib/store";
 import { Card } from "./Card";
+import { columnDropId } from "./ordering";
 
 export function Column({ column }: { column: BoardColumn }) {
   const collapsed = useUi((state) => state.collapsed[column.status] ?? false);
@@ -14,15 +15,15 @@ export function Column({ column }: { column: BoardColumn }) {
   // stopped highlighting — and since cards stack from the top, the upper part of a column
   // looked dead while the empty space below it worked. The drop landed correctly either
   // way; the affordance was lying about it.
+  const dropId = columnDropId(column.status);
   const { setNodeRef, over } = useDroppable({
-    id: `column:${column.status}`,
+    id: dropId,
     data: { status: column.status },
   });
 
   const overId = over ? String(over.id) : null;
   const isOver =
-    overId !== null &&
-    (overId === `column:${column.status}` || column.items.some((item) => item.id === overId));
+    overId !== null && (overId === dropId || column.items.some((item) => item.id === overId));
 
   if (collapsed) {
     return (
