@@ -57,7 +57,7 @@ jobs:
         run: pytest -q
 
   web:
-    name: Web — typecheck and build
+    name: Web — typecheck, test, build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -76,6 +76,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Tests
+        run: npm test
 
       - name: Build
         run: npm run build
