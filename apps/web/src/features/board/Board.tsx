@@ -16,11 +16,12 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
 import { useBoard, useMoveApplication } from "../../api/hooks";
-import type { Application, AppStatus, Board as BoardData } from "../../api/types";
+import type { Application, Board as BoardData } from "../../api/types";
 import { STATUS_LABELS } from "../../api/types";
 import { useUi } from "../../lib/store";
 import { Card } from "./Card";
 import { Column } from "./Column";
+import { resolveDrop } from "./ordering";
 
 /**
  * Where the cursor is, is where you mean to drop.
@@ -47,10 +48,6 @@ const collisionDetection: CollisionDetection = (args) => {
 
 function findApplication(board: BoardData | undefined, id: string): Application | undefined {
   return board?.columns.flatMap((column) => column.items).find((item) => item.id === id);
-}
-
-function columnOf(board: BoardData | undefined, id: string): AppStatus | undefined {
-  return board?.columns.find((column) => column.items.some((item) => item.id === id))?.status;
 }
 
 export function Board() {
@@ -81,31 +78,10 @@ export function Board() {
     if (!over || !board) return;
 
     const activeId = String(active.id);
-    const overId = String(over.id);
-    if (activeId === overId) return;
+    const placement = resolveDrop(board, activeId, String(over.id));
+    if (!placement) return;
 
-    // Dropping on a column header/empty area vs. on another card.
-    const toStatus = overId.startsWith("column:")
-      ? (overId.slice("column:".length) as AppStatus)
-      : columnOf(board, overId);
-    if (!toStatus) return;
-
-    const target = board.columns.find((column) => column.status === toStatus);
-    const items = (target?.items ?? []).filter((item) => item.id !== activeId);
-
-    let beforeId: string | null = null;
-    let afterId: string | null = null;
-    if (!overId.startsWith("column:")) {
-      const index = items.findIndex((item) => item.id === overId);
-      if (index >= 0) {
-        // Land above the card we're hovering: its predecessor is "before".
-        beforeId = index > 0 ? items[index - 1].id : null;
-        afterId = items[index].id;
-      }
-    } else {
-      // Dropped into open space — append to the bottom of the column.
-      beforeId = items.at(-1)?.id ?? null;
-    }
+    const { toStatus, beforeId, afterId } = placement;
 
     move.mutate(
       { id: activeId, toStatus, beforeId, afterId },

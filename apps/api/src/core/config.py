@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # Tier 4 — LLM structuring. Disabled unless a key is present.
     anthropic_api_key: str | None = None
-    llm_model: str = "claude-opus-5"
+    llm_model: str = "claude-sonnet-5"
     llm_max_input_chars: int = 32_000
     llm_monthly_call_cap: int = 500
 
