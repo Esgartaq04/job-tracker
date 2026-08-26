@@ -12,19 +12,30 @@
  */
 
 import type { AppStatus, Board, BoardColumn } from "../../api/types";
+import { STATUSES } from "../../api/types";
 
 /** dnd-kit ids for a whole column, namespaced so they can't collide with card ids. */
 export const COLUMN_DROP_PREFIX = "column:";
+
+const STATUSES_BY_NAME: ReadonlySet<string> = new Set(STATUSES);
 
 export function columnDropId(status: AppStatus): string {
   return `${COLUMN_DROP_PREFIX}${status}`;
 }
 
-/** The status a column droppable refers to, or null when the id is a card's. */
+/**
+ * The status a column droppable refers to, or null for any id that is not one — a card's
+ * id, or a malformed column id.
+ *
+ * The prefix alone is not enough to justify the cast: `"column:"` would slice to `""` and
+ * `"column:banana"` to `"banana"`, and both would be handed back as an `AppStatus` the
+ * callers then use to name a column and label a toast. Checking the suffix against the
+ * real status list is what makes the cast true.
+ */
 export function statusFromColumnDropId(id: string): AppStatus | null {
-  return id.startsWith(COLUMN_DROP_PREFIX)
-    ? (id.slice(COLUMN_DROP_PREFIX.length) as AppStatus)
-    : null;
+  if (!id.startsWith(COLUMN_DROP_PREFIX)) return null;
+  const status = id.slice(COLUMN_DROP_PREFIX.length);
+  return STATUSES_BY_NAME.has(status) ? (status as AppStatus) : null;
 }
 
 export function columnOf(board: Board | undefined, cardId: string): AppStatus | undefined {
