@@ -10,6 +10,10 @@ import {
 
 const el = (id) => document.getElementById(id);
 
+/** Known before any click: `sidePanel.open` must run inside the click's gesture, and
+ *  awaiting a tab query first would spend it. */
+let activeTabId = null;
+
 function fail(message) {
   el("settings-status").textContent = message;
   el("settings-status").className = "error";
@@ -26,6 +30,7 @@ async function render() {
   el("token").value = token;
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  activeTabId = tab?.id ?? null;
   el("page").textContent = tab?.title ?? tab?.url ?? "";
 
   // No token — or a token whose host we're not allowed to reach — means nothing works,
@@ -73,6 +78,19 @@ async function save(markApplied) {
 el("save-btn").addEventListener("click", () => save(false));
 el("save-applied-btn").addEventListener("click", () => save(true));
 el("settings-btn").addEventListener("click", () => show("settings"));
+
+// The side panel stays open beside the form, which a popup can't: it closes the moment
+// a file dialog takes focus.
+el("autofill-btn").addEventListener("click", () => {
+  if (activeTabId === null) return;
+  chrome.sidePanel
+    .open({ tabId: activeTabId })
+    .then(() => window.close())
+    .catch((error) => {
+      el("status").textContent = `Couldn't open the autofill panel: ${error.message}`;
+      el("status").className = "error";
+    });
+});
 
 el("save-settings").addEventListener("click", async () => {
   const apiBase = normalizeBase(el("api-base").value) || DEFAULTS.apiBase;

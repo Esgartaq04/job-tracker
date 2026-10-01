@@ -1,20 +1,22 @@
 {
   "manifest_version": 3,
   "name": "Job Tracker — save this posting",
-  "version": "0.1.0",
-  "description": "Save a job posting to your tracker from the page you're already looking at.",
+  "version": "0.2.0",
+  "description": "Save a job posting to your tracker from the page you're already looking at, and fill in its application form from your resume.",
 
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
 
   "optional_host_permissions": ["https://*/*", "http://*/*"],
 
-  "//": "No host_permissions for job sites: the extension only reads a tab after you click it (activeTab). The optional entry is granted for one origin — the tracker API you configure — when you press Connect, because an unpacked install's chrome-extension:// id changes per machine and so cannot be listed in the API's CORS_ORIGINS.",
+  "//": "No host_permissions for job sites: the extension only reads a tab after you click it (activeTab). The optional entry is granted for one origin — the tracker API you configure — when you press Connect, because an unpacked install's chrome-extension:// id changes per machine and so cannot be listed in the API's CORS_ORIGINS. Autofill asks for one more origin the same way — the application form's — when you press Fill this page.",
 
   "action": {
     "default_title": "Save to tracker",
     "default_popup": "src/popup.html",
     "default_icon": { "48": "icons/icon-48.png", "128": "icons/icon-128.png" }
   },
+
+  "side_panel": { "default_path": "src/sidepanel.html" },
 
   "background": { "service_worker": "src/background.js", "type": "module" },
 

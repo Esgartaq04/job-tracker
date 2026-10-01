@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="sidepanel.css" />
+    <title>Autofill application</title>
+  </head>
+  <body>
+    <header>
+      <span class="mark">⬢</span>
+      <h1>Autofill application</h1>
+    </header>
+
+    <section>
+      <h2>1. Your resume</h2>
+      <label>
+        PDF or Word file
+        <input id="resume" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+      </label>
+      <button id="read" class="primary" disabled>Read resume</button>
+      <p id="profile" class="muted" aria-live="polite"></p>
+      <p class="muted">
+        Kept only while this panel is open. It's sent to your tracker and its AI to read
+        it, and never stored.
+      </p>
+    </section>
+
+    <section>
+      <h2>2. The form</h2>
+      <p class="muted">Open the application form in this tab, then:</p>
+      <button id="fill" class="primary" disabled>Fill this page</button>
+      <button id="allow-frames" hidden></button>
+      <p id="status" role="status" aria-live="polite"></p>
+      <p class="muted">
+        Nothing is submitted. Check every field, answer the ones marked
+        <span class="needs">amber</span>, then submit the form yourself.
+      </p>
+    </section>
+
+    <section id="results" hidden>
+      <h2>Filled</h2>
+      <ul id="filled"></ul>
+      <h2>Needs you</h2>
+      <ul id="needs"></ul>
+    </section>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

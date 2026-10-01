@@ -9,6 +9,7 @@ from src.core.config import settings
 from src.routers import (
     applications,
     auth,
+    autofill,
     cover_letters,
     events,
     ingest,
@@ -57,6 +58,7 @@ for router in (
     ingest.router,
     ingest.application_router,
     cover_letters.router,
+    autofill.router,
     stats.router,
     reminders.router,
     search.router,

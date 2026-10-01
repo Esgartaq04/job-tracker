@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Apply — Software Engineer Intern at Ramp</title></head>
+  <body>
+    <!-- Shaped like a Greenhouse application form: labelled inputs, a hidden file input
+         behind an "Attach" button, a legend-labelled radio group, and a submit button
+         that must never be pressed by the extension. -->
+    <form id="application" action="/submit" method="post">
+      <div class="field">
+        <label for="first_name">First Name <span>*</span></label>
+        <input id="first_name" name="job_application[first_name]" type="text" required />
+      </div>
+      <div class="field">
+        <label for="last_name">Last Name *</label>
+        <input id="last_name" name="job_application[last_name]" type="text" required />
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="job_application[email]" type="email" />
+      </div>
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input id="phone" name="job_application[phone]" type="tel" value="+1 555 0199" />
+      </div>
+      <div class="field">
+        <input name="urls[LinkedIn]" type="text" aria-label="LinkedIn Profile" />
+      </div>
+      <div class="field">
+        <label for="resume">Resume/CV</label>
+        <button type="button" onclick="document.getElementById('resume').click()">Attach</button>
+        <input id="resume" name="resume" type="file" style="display: none" />
+      </div>
+      <div class="field">
+        <label for="country">Country</label>
+        <select id="country" name="country">
+          <option value="">Please select</option>
+          <option value="CA">Canada</option>
+          <option value="US">United States</option>
+        </select>
+      </div>
+      <fieldset>
+        <legend>Are you legally authorized to work in the United States? *</legend>
+        <label><input type="radio" name="authorized" value="1" required /> Yes</label>
+        <label><input type="radio" name="authorized" value="0" /> No</label>
+      </fieldset>
+      <div class="field">
+        <label for="why">Why do you want to work at Ramp?</label>
+        <textarea id="why" name="why"></textarea>
+      </div>
+      <div class="field">
+        <label><input type="checkbox" name="updates" /> Send me updates about future roles</label>
+      </div>
+      <input type="hidden" name="source" value="greenhouse" />
+      <textarea name="g-recaptcha-response" style="display: block"></textarea>
+      <button type="submit" id="submit">Submit Application</button>
+    </form>
+
+    <script>
+      window.__submitted = 0;
+      window.__reactSaw = [];
+      document.getElementById("application").addEventListener("submit", (event) => {
+        event.preventDefault();
+        window.__submitted++;
+      });
+      document.getElementById("submit").addEventListener("click", () => window.__submitted++);
+
+      // React's value tracker in miniature: React overrides the *instance's* `value`
+      // property to remember the last value it set, and on `input` ignores the event if
+      // the DOM value still equals that. Assigning `el.value = x` updates the tracker
+      // and so is silently dropped; going through the prototype setter is not.
+      const first = document.getElementById("first_name");
+      const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      let tracked = "";
+      Object.defineProperty(first, "value", {
+        get() { return proto.get.call(this); },
+        set(next) { tracked = String(next); proto.set.call(this, next); },
+      });
+      first.addEventListener("input", () => {
+        const now = proto.get.call(first);
+        if (now !== tracked) { tracked = now; window.__reactSaw.push(now); }
+      });
+    </script>
+  </body>
+</html>
