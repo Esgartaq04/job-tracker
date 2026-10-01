@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { STATUSES } from "../../api/types";
 import { makeBoard as board } from "../../test/fixtures";
-import { columnDropId, resolveDrop, statusFromColumnDropId } from "./ordering";
+import {
+  COLUMN_DROP_PREFIX,
+  columnDropId,
+  resolveDrop,
+  statusFromColumnDropId,
+} from "./ordering";
 
 describe("resolveDrop", () => {
   describe("where the card lands", () => {
@@ -75,6 +81,17 @@ describe("resolveDrop", () => {
     it("ignores a drop that arrives before the board has loaded", () => {
       expect(resolveDrop(undefined, "a", "b")).toBeNull();
     });
+
+    // A malformed column id must not become a status. The suffix used to be cast to
+    // AppStatus on the strength of the prefix alone, so "column:banana" resolved to a
+    // placement carrying toStatus "banana" — enough to reach the move request and to
+    // index STATUS_LABELS for the failure toast.
+    it.each(["column:", "column:banana", "column:APPLIED", "column:applied "])(
+      "ignores the malformed column id %o",
+      (overId) => {
+        expect(resolveDrop(board({ applied: ["a", "b"] }), "a", overId)).toBeNull();
+      },
+    );
   });
 });
 
@@ -85,5 +102,19 @@ describe("column drop ids", () => {
 
   it("does not mistake a card id for a column id", () => {
     expect(statusFromColumnDropId("8f14e45f-ceea-467a-9c4b-1f2a3b4c5d6e")).toBeNull();
+  });
+
+  it("reads every status the board can hold", () => {
+    for (const status of STATUSES) {
+      expect(statusFromColumnDropId(columnDropId(status))).toBe(status);
+    }
+  });
+
+  it("rejects the prefix on its own rather than returning an empty status", () => {
+    expect(statusFromColumnDropId(COLUMN_DROP_PREFIX)).toBeNull();
+  });
+
+  it("rejects a prefixed id whose suffix is not a status", () => {
+    expect(statusFromColumnDropId("column:banana")).toBeNull();
   });
 });
