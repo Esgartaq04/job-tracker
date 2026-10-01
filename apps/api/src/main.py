@@ -6,7 +6,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.config import settings
-from src.routers import applications, auth, events, ingest, reminders, search, stats
+from src.routers import (
+    applications,
+    auth,
+    cover_letters,
+    events,
+    ingest,
+    reminders,
+    search,
+    stats,
+)
 from src.services.events import hub
 from src.services.ingestion import queue
 
@@ -37,6 +46,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # The SPA reads the .docx download's name from here; cross-origin, it's hidden
+    # unless exposed.
+    expose_headers=["Content-Disposition"],
 )
 
 for router in (
@@ -44,6 +56,7 @@ for router in (
     applications.router,
     ingest.router,
     ingest.application_router,
+    cover_letters.router,
     stats.router,
     reminders.router,
     search.router,

@@ -25,12 +25,14 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const token = getToken();
+  // A FormData body sets its own multipart Content-Type, boundary included.
+  const json = !(init.body instanceof FormData);
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(json ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },
@@ -53,9 +55,30 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
           : `Request failed (${response.status})`;
     throw new ApiError(response.status, message, detail);
   }
+  return response;
+}
 
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await send(path, init);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+/** Fetch a file with the bearer token and hand it to the browser as a download. */
+async function download(path: string, fallbackName: string): Promise<void> {
+  const response = await send(path);
+  const header = response.headers.get("Content-Disposition") ?? "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header)?.[1];
+  const name = encoded ? decodeURIComponent(encoded) : fallbackName;
+
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export const api = {
@@ -65,6 +88,8 @@ export const api = {
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  upload: <T>(path: string, form: FormData) => request<T>(path, { method: "POST", body: form }),
+  download,
 };
 
 export { API_BASE };

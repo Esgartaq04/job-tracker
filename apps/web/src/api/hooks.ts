@@ -5,12 +5,13 @@ import {
   type UseMutationResult,
 } from "@tanstack/react-query";
 
-import { API_BASE, api, getToken } from "./client";
+import { API_BASE, ApiError, api, getToken } from "./client";
 import type {
   Application,
   ApplicationDetail,
   AppStatus,
   Board,
+  CoverLetter,
   Funnel,
   ImportReport,
   IngestAccepted,
@@ -23,6 +24,7 @@ import type {
 export const queryKeys = {
   board: ["board"] as const,
   application: (id: string) => ["application", id] as const,
+  coverLetter: (id: string) => ["cover-letter", id] as const,
   tags: ["tags"] as const,
   funnel: ["stats", "funnel"] as const,
   velocity: ["stats", "velocity"] as const,
@@ -175,6 +177,44 @@ export function useCleanDescription(id: string) {
       queryClient.setQueryData(queryKeys.application(id), updated);
       queryClient.invalidateQueries({ queryKey: queryKeys.board });
     },
+  });
+}
+
+/** This listing's cover letter, or `null` when none has been generated yet. */
+export function useCoverLetter(id: string) {
+  return useQuery({
+    queryKey: queryKeys.coverLetter(id),
+    queryFn: async () => {
+      try {
+        return await api.get<CoverLetter>(`/applications/${id}/cover-letter`);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+  });
+}
+
+/** The resume rides along in the request and is never stored. */
+export function useGenerateCoverLetter(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ resume, notes }: { resume: File; notes?: string }) => {
+      const form = new FormData();
+      form.append("resume", resume);
+      if (notes?.trim()) form.append("notes", notes.trim());
+      return api.upload<CoverLetter>(`/applications/${id}/cover-letter`, form);
+    },
+    onSuccess: (letter) => queryClient.setQueryData(queryKeys.coverLetter(id), letter),
+  });
+}
+
+export function useEditCoverLetter(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (content: string) =>
+      api.patch<CoverLetter>(`/applications/${id}/cover-letter`, { content }),
+    onSuccess: (letter) => queryClient.setQueryData(queryKeys.coverLetter(id), letter),
   });
 }
 
