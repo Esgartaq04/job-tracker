@@ -26,8 +26,9 @@ export function collectFormFields() {
     return document.getElementById(id)?.innerText ?? "";
   }
 
-  /** The words a person would read as this control's question. */
-  function labelFor(el) {
+  /** The words a person would read as this control's question. An option's own label
+   *  skips the container fallback, which would name the group's question instead. */
+  function labelFor(el, fallback = true) {
     const parts = [];
     if (el.id) {
       for (const label of document.querySelectorAll(`label[for="${CSS.escape(el.id)}"]`)) {
@@ -40,7 +41,7 @@ export function collectFormFields() {
     if (labelledBy) parts.push(labelledBy.split(/\s+/).map(textOf).join(" "));
     const aria = el.getAttribute("aria-label");
     if (aria) parts.push(aria);
-    if (!parts.length) {
+    if (!parts.length && fallback) {
       // Unlabelled markup: the nearest container's own text usually holds the question.
       const container = el.closest("fieldset, .field, .form-group, li, div");
       const legend = container?.querySelector("legend, label, h3, h4, p");
@@ -68,8 +69,11 @@ export function collectFormFields() {
     return clean(heading?.innerText ?? "").slice(0, 300);
   }
 
+  /** Recorded on the input so `fillFields` matches the plan against these exact words. */
   function optionLabel(input) {
-    return labelFor(input) || clean(input.value);
+    const label = labelFor(input, false) || clean(input.value);
+    input.setAttribute("data-jt-option", label);
+    return label;
   }
 
   function fileRole(label) {
@@ -89,6 +93,7 @@ export function collectFormFields() {
 
   for (const el of document.querySelectorAll("input, textarea, select")) {
     el.removeAttribute("data-jt-field");
+    el.removeAttribute("data-jt-option");
   }
 
   for (const el of document.querySelectorAll("input, textarea, select")) {
@@ -228,6 +233,8 @@ export function fillFields(assignments, needs, resume) {
   }
 
   function labelText(input) {
+    const recorded = input.getAttribute("data-jt-option");
+    if (recorded) return norm(recorded);
     const label =
       (input.id && document.querySelector(`label[for="${CSS.escape(input.id)}"]`)) ||
       input.closest("label");

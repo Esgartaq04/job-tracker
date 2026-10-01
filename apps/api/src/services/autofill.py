@@ -189,10 +189,19 @@ def _pick_option(field: FormField, value: str | None) -> str | None:
     for option in field.options:
         if option.strip().lower() == wanted:
             return option
+    # Whole words only, and nothing too short to mean anything: "US" must not land on
+    # "Australia", nor "No" on "North Carolina".
     for option in field.options:
-        if wanted and (wanted in option.lower() or option.lower() in wanted) and len(option) > 1:
+        have = option.strip().lower()
+        if min(len(have), len(wanted)) >= 3 and (
+            _has_words(have, wanted) or _has_words(wanted, have)
+        ):
             return option
     return None
+
+
+def _has_words(text: str, words: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(words)}(?!\w)", text) is not None
 
 
 def plan(db: Session, user_id, request: AutofillRequest) -> AutofillPlan:
@@ -229,8 +238,8 @@ def plan(db: Session, user_id, request: AutofillRequest) -> AutofillPlan:
             leftover.append(field)
 
     used_ai = False
-    if leftover and ai.enabled() and ai.under_cap(db, user_id):
-        answers = _ask_model(db, user_id, profile, leftover)
+    answers = _ask_model(db, user_id, profile, leftover) if leftover else None
+    if answers is not None:
         used_ai = True
         by_id = {field.id: field for field in leftover}
         for answer in answers:
@@ -252,13 +261,14 @@ def plan(db: Session, user_id, request: AutofillRequest) -> AutofillPlan:
 
 def _ask_model(
     db: Session, user_id, profile: ResumeProfile, fields: list[FormField]
-) -> list[_Answer]:
+) -> list[_Answer] | None:
+    """The model's answers, or None when it wasn't asked (no key, cap spent)."""
     try:
         client = ai.client()
         ai.reserve_call(db, user_id, "autofill")
     except (ai.AIUnavailable, ai.AIQuotaExceeded) as exc:
         logger.info("autofill without AI: %s", exc)
-        return []
+        return None
 
     described = [
         {

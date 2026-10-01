@@ -11,6 +11,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 from sqlalchemy.orm import Session
 
@@ -93,11 +94,26 @@ def faithful(raw: str, cleaned: str) -> Verdict:
     share = matched / len(grams)
     allowed = max(len(grams) * (1 - MIN_FAITHFUL), UNMATCHED_ALLOWANCE)
 
-    if len(grams) - matched > allowed:
+    if len(grams) - matched > allowed or _substituted(raw_words, cleaned_words):
         return Verdict(False, "it reworded the description", share, kept)
     if kept < MIN_KEPT:
         return Verdict(False, "it removed most of the description", share, kept)
     return Verdict(True, None, share, kept)
+
+
+def _substituted(raw_words: list[str], cleaned_words: list[str]) -> bool:
+    """Whether any word was swapped or added, not just deleted. The 5-gram allowance
+    alone lets one changed word through — "5+ years" becoming "3+ years" misses only
+    five runs. Aligned word by word, any words the original doesn't have at that spot
+    must repeat at least three words of it verbatim (a heading) — never one swapped word."""
+    raw_text = f" {' '.join(raw_words)} "
+    matcher = SequenceMatcher(None, raw_words, cleaned_words, autojunk=False)
+    for op, _, _, j1, j2 in matcher.get_opcodes():
+        if op in ("replace", "insert"):
+            added = cleaned_words[j1:j2]
+            if len(added) < 3 or f" {' '.join(added)} " not in raw_text:
+                return True
+    return False
 
 
 def clean_description(db: Session, application: Application) -> Verdict:
@@ -155,7 +171,11 @@ def run_cleanup(db: Session, application_id: uuid.UUID) -> None:
     """Background entry point (queue / worker): best effort, never raises for the
     expected reasons, and tells the board when the description changed."""
     application = db.get(Application, application_id)
+    # Once a run has a verdict, re-ingesting the same immutable raw text would only buy
+    # the same verdict again. Retrying is the "Clean up" button's job.
     if application is None or application.description_clean:
+        return
+    if (application.extraction_meta or {}).get("cleanup"):
         return
     try:
         verdict = clean_description(db, application)

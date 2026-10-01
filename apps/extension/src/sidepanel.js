@@ -86,21 +86,21 @@ el("read").addEventListener("click", async () => {
 
 // ── 2. the form ────────────────────────────────────────────────────────────
 
-/** Make sure we may read `origin`, asking for exactly that origin if not. Must run
- *  inside the click that started it — Chrome only shows the prompt for a gesture. */
-async function ensureAccess(origin) {
-  const pattern = originPattern(origin);
-  if (await chrome.permissions.contains({ origins: [pattern] })) return true;
-  return chrome.permissions.request({ origins: [pattern] });
-}
-
 async function activeTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab;
 }
 
+/** Known before any click, like the popup's tab id: the permission prompt only shows
+ *  inside the click's gesture, and awaiting a tab query first would spend it. */
+let currentTab = null;
+const trackTab = () => activeTab().then((tab) => (currentTab = tab ?? null));
+trackTab();
+chrome.tabs.onActivated.addListener(trackTab);
+chrome.tabs.onUpdated.addListener((_id, _change, tab) => tab.active && trackTab());
+
 el("fill").addEventListener("click", async () => {
-  const tab = await activeTab();
+  const tab = currentTab;
   // Without the `tabs` permission the URL is visible only while the toolbar click's
   // activeTab grant lasts, or once this origin has been allowed before.
   if (!tab?.url) {
@@ -110,7 +110,9 @@ el("fill").addEventListener("click", async () => {
     );
   }
   if (!/^https?:/.test(tab.url)) return status("Open the application form in this tab first.", "error");
-  if (!(await ensureAccess(new URL(tab.url).origin))) {
+  // Called first, with nothing awaited before it. Already granted, it resolves true
+  // without a prompt.
+  if (!(await chrome.permissions.request({ origins: [originPattern(new URL(tab.url).origin)] }))) {
     return status("Access to this site was declined, so the form can't be filled.", "error");
   }
   await fill(tab);

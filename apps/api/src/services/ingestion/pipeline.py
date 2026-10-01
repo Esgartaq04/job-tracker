@@ -247,7 +247,8 @@ def apply_outcome(
         application.source_url
     )
 
-    if "llm" in outcome.tiers_attempted:
+    # Once per Tier 4 call: the extension's save can run it on the HTML and the text.
+    for _ in range(outcome.tiers_attempted.count("llm")):
         ai.record_call(db, application.user_id, "extraction")
 
     meta = dict(application.extraction_meta or {})

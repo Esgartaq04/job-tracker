@@ -26,9 +26,11 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
       : application.description_raw;
 
   const [draft, setDraft] = useState(shown ?? "");
+  useEffect(() => setEditing(false), [application.id]);
+  // Not while editing: the background clean-up can land mid-edit and change `shown`.
   useEffect(() => {
-    setDraft(shown ?? "");
-  }, [application.id, shown]);
+    if (!editing) setDraft(shown ?? "");
+  }, [application.id, shown, editing]);
 
   const meta = application.extraction_meta as {
     tier?: string | null;

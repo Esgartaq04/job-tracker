@@ -34,23 +34,32 @@ export function collectPosting() {
       }
     }
 
+    // The head can only go stale after a pushState. If the document was loaded at this
+    // very URL, the server wrote the head for it — even when its canonical names another
+    // host, a locale prefix or a slug, as ATS pages routinely do.
+    const withoutHash = (href) => href.split("#")[0];
+    const loadedHere =
+      withoutHash(performance.getEntriesByType("navigation")[0]?.name ?? "") ===
+      withoutHash(here.href);
+
     // A canonical link is only an upgrade when it describes this same page, minus noise
-    // like tracking or search parameters. A different path means it went stale; so
-    // does dropping a parameter that identifies the job — Google's apply page is
-    // `/apply?jobId=…`, and a canonical without the `jobId` names every job at once.
+    // like tracking or search parameters. After a pushState, a different path means it
+    // went stale; so does dropping a parameter that identifies the job — Google's apply
+    // page is `/apply?jobId=…`, and a canonical without the `jobId` names every job.
     const canonicalHref = document.querySelector("link[rel=canonical]")?.href;
     if (canonicalHref) {
       try {
         const canonical = new URL(canonicalHref);
         const samePath =
           canonical.origin === here.origin &&
-          canonical.pathname.replace(/\/+$/, "") === here.pathname.replace(/\/+$/, "");
+          canonical.pathname.replace(/\/+$/, "").toLowerCase() ===
+            here.pathname.replace(/\/+$/, "").toLowerCase();
         const keepsIdentity = [...here.searchParams].every(
           ([key, value]) => isNoise(key) || canonical.searchParams.get(key) === value,
         );
-        return samePath && keepsIdentity
+        return (samePath || loadedHere) && keepsIdentity
           ? { url: canonical.href, headTrusted: true }
-          : { url: here.href, headTrusted: false };
+          : { url: here.href, headTrusted: loadedHere };
       } catch {
         // An unparseable canonical link is no evidence either way.
       }

@@ -81,6 +81,10 @@ def _is_tracking(key: str) -> bool:
     return lowered in TRACKING_PARAMS or lowered.startswith(TRACKING_PREFIXES)
 
 
+#: `/jobs/view/4001` or `/jobs/view/senior-engineer-at-acme-4001`.
+_LINKEDIN_VIEW = re.compile(r"^/(?:comm/)?jobs/view/(?:[^/]*-)?(\d+)$")
+
+
 def canonicalize(url: str) -> str:
     """Deterministic key for deduplication and cache lookups."""
     parts = urlsplit(normalize_url(url))
@@ -98,10 +102,15 @@ def canonicalize(url: str) -> str:
     pairs = parse_qsl(parts.query, keep_blank_values=False)
 
     # LinkedIn's search and collection panes name the open job in `currentJobId`, so
-    # the same posting arrives as many different search URLs. Key it by the job's own
-    # page, which is also what the browser extension sends.
-    if host.endswith("linkedin.com") and path.startswith(("/jobs/search", "/jobs/collections")):
-        job_id = dict(pairs).get("currentJobId", "")
+    # the same posting arrives as many different search URLs; its own page comes with
+    # or without `www.`, a country subdomain, and a title slug before the id. Key them
+    # all by the bare job page, which is also what the browser extension sends.
+    if host == "linkedin.com" or host.endswith(".linkedin.com"):
+        job_id = ""
+        if path.startswith(("/jobs/search", "/jobs/collections")):
+            job_id = dict(pairs).get("currentJobId", "")
+        elif viewed := _LINKEDIN_VIEW.match(path):
+            job_id = viewed.group(1)
         if job_id.isdigit():
             return f"https://www.linkedin.com/jobs/view/{job_id}"
 
