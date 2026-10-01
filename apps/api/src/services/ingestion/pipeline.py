@@ -26,9 +26,10 @@ from src.core.config import settings
 from src.models import Application, IngestJob, IngestStatus
 from src.models.util import utcnow
 from src.schemas.extraction import ExtractedPosting
-from src.services import events
+from src.services import ai, events
 from src.services.applications import to_out
 from src.services.ingestion import html as html_utils
+from src.services.ingestion import queue
 from src.services.ingestion.adapters import AdapterError, find_adapter
 from src.services.ingestion.fetch import FetchError, fetch_url
 from src.services.ingestion.normalize import company_domain_for, company_guess_from_url, host_of
@@ -65,13 +66,16 @@ def run_pipeline(
     html: str | None = None,
     text: str | None = None,
     hints: dict | None = None,
+    allow_llm: bool = True,
 ) -> IngestOutcome:
     """Pure extraction: no database, no side effects. `html` short-circuits the
     fetch (browser extension), `text` short-circuits everything (manual paste),
     and `hints` are the extension's read of the rendered page — used only to fill
-    gaps the tiers left, never to overwrite them."""
+    gaps the tiers left, never to overwrite them. `allow_llm=False` skips Tier 4,
+    which is how a spent monthly cap reaches a function with no database."""
     started = time.perf_counter()
     outcome = IngestOutcome()
+    use_llm = allow_llm and llm.enabled()
 
     def finish() -> IngestOutcome:
         outcome.duration_ms = int((time.perf_counter() - started) * 1000)
@@ -104,7 +108,7 @@ def run_pipeline(
         )
         # The user typed it, so it counts as a success even without a parsed title.
         outcome.tier_succeeded = "manual"
-        if llm.enabled() and outcome.posting and not outcome.posting.title:
+        if use_llm and outcome.posting and not outcome.posting.title:
             absorb("llm", llm.extract(cleaned, url=url))
         return finish()
 
@@ -150,7 +154,7 @@ def run_pipeline(
                 return finish()
 
     # ── Tier 4: LLM structuring over the cleaned text ─────────────────────
-    if page_html and llm.enabled() and not _looks_complete(outcome.posting):
+    if page_html and use_llm and not _looks_complete(outcome.posting):
         cleaned = html_utils.html_to_text(html_utils.main_content_html(page_html))
         absorb("llm", llm.extract(cleaned, url=url))
 
@@ -194,7 +198,7 @@ def ingest_application(db: Session, application_id: uuid.UUID) -> IngestOutcome:
         {"application_id": str(application.id), "url": application.source_url},
     )
 
-    outcome = run_pipeline(application.source_url)
+    outcome = run_pipeline(application.source_url, allow_llm=ai.under_cap(db, user_id))
     apply_outcome(db, application, outcome)
     db.flush()
 
@@ -222,6 +226,8 @@ def ingest_application(db: Session, application_id: uuid.UUID) -> IngestOutcome:
             "application": to_out(application).model_dump(mode="json"),
         },
     )
+    if application.description_raw and not application.description_clean:
+        queue.enqueue_cleanup(application.id)
     return outcome
 
 
@@ -240,6 +246,9 @@ def apply_outcome(
     application.company_domain = application.company_domain or company_domain_for(
         application.source_url
     )
+
+    if "llm" in outcome.tiers_attempted:
+        ai.record_call(db, application.user_id, "extraction")
 
     meta = dict(application.extraction_meta or {})
     # Placeholders written when the card was created ("Untitled", a company guessed

@@ -15,7 +15,8 @@ from src.schemas.ingest import (
     IngestFromTextRequest,
     IngestRequest,
 )
-from src.services import events, ranking
+from src.services import ai, ai_text, events, ranking
+from src.services.ai_errors import ai_errors
 from src.services.applications import get_owned, to_out, user_applications
 from src.services.ingestion import pipeline, queue
 from src.services.ingestion.normalize import (
@@ -142,10 +143,12 @@ def ingest_from_dom(
         # wrong when the URL matched a different one.
         return _from_dom_out(application, duplicate=True)
 
+    allow_llm = ai.under_cap(db, user.id)
     outcome = pipeline.run_pipeline(
         application.source_url,
         html=payload.html,
         hints=payload.hints.model_dump() if payload.hints else None,
+        allow_llm=allow_llm,
     )
 
     # LinkedIn and friends defeat the readability pass — it comes back with a nav label
@@ -154,7 +157,11 @@ def ingest_from_dom(
     fallback = (payload.fallback_text or "").strip()
     extracted = outcome.posting.description_markdown if outcome.posting else None
     if fallback and len(fallback) > max(len(extracted or ""), MIN_DESCRIPTION_CHARS):
-        text_outcome = pipeline.run_pipeline(application.source_url, text=fallback)
+        text_outcome = pipeline.run_pipeline(
+            application.source_url, text=fallback, allow_llm=allow_llm
+        )
+        if "llm" in text_outcome.tiers_attempted:
+            outcome.tiers_attempted.append("llm")
         if text_outcome.posting:
             outcome.posting = (
                 text_outcome.posting
@@ -173,13 +180,13 @@ def ingest_from_dom(
         "ingest.completed",
         {"application_id": str(application.id), "ingest_status": application.ingest_status.value},
     )
+    if application.description_raw and not application.description_clean:
+        queue.enqueue_cleanup(application.id)
     return _from_dom_out(application, duplicate=duplicate)
 
 
 def _from_dom_out(application: Application, *, duplicate: bool) -> IngestFromDomOut:
-    return IngestFromDomOut(
-        **to_out(application, detail=True).model_dump(), duplicate=duplicate
-    )
+    return IngestFromDomOut(**to_out(application, detail=True).model_dump(), duplicate=duplicate)
 
 
 @router.post("/from-text", response_model=ApplicationDetailOut)
@@ -208,7 +215,9 @@ def ingest_from_text(
         db.flush()
         record_initial_event(db, application)
 
-    outcome = pipeline.run_pipeline(application.source_url, text=payload.text)
+    outcome = pipeline.run_pipeline(
+        application.source_url, text=payload.text, allow_llm=ai.under_cap(db, user.id)
+    )
     pipeline.apply_outcome(db, application, outcome, mark_manual=True)
 
     # Applied last: what the user typed outranks anything the fallback inferred.
@@ -216,6 +225,28 @@ def ingest_from_text(
         application.company = payload.company
     if payload.title:
         application.title = payload.title
+    db.commit()
+    if application.description_raw and not application.description_clean:
+        queue.enqueue_cleanup(application.id)
+    return to_out(application, detail=True)
+
+
+@application_router.post("/{application_id}/clean-description", response_model=ApplicationDetailOut)
+def clean_description(
+    application_id: uuid.UUID, user: CurrentUser, db: DbSession
+) -> ApplicationDetailOut:
+    """Run the AI clean-up now — for cards saved before it existed, or to retry. The
+    outcome, including a rejection, is recorded in `extraction_meta.cleanup`."""
+    application = get_owned(db, user.id, application_id)
+    if application is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such application")
+    if not application.description_raw:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "There's no description to clean yet."
+        )
+
+    with ai_errors():
+        ai_text.clean_description(db, application)
     db.commit()
     return to_out(application, detail=True)
 

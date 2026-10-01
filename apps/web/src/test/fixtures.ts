@@ -28,6 +28,7 @@ export function makeApplication(overrides: Partial<Application> & { id: string }
     description: null,
     description_raw: null,
     description_user: null,
+    description_clean: null,
     extraction_meta: {},
 
     status: "applied",

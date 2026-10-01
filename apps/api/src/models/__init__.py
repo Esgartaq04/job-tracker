@@ -8,6 +8,7 @@ from src.models.enums import (
     IngestStatus,
 )
 from src.models.ingest_job import IngestJob
+from src.models.llm_call import LLMCall
 from src.models.status_event import StatusEvent
 from src.models.tag import ApplicationTag, Tag
 from src.models.user import User
@@ -23,6 +24,7 @@ __all__ = [
     "EventSource",
     "IngestJob",
     "IngestStatus",
+    "LLMCall",
     "StatusEvent",
     "Tag",
     "User",

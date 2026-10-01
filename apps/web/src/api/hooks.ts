@@ -166,6 +166,18 @@ export function useReingest() {
   });
 }
 
+/** Run the AI clean-up of a description now (it normally runs on its own after a save). */
+export function useCleanDescription(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<ApplicationDetail>(`/applications/${id}/clean-description`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKeys.application(id), updated);
+      queryClient.invalidateQueries({ queryKey: queryKeys.board });
+    },
+  });
+}
+
 export function useAddNote(id: string) {
   const queryClient = useQueryClient();
   return useMutation({

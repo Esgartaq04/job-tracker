@@ -13,7 +13,8 @@ from src.models.util import utcnow
 
 class Application(Base):
     """One tracked posting. `description_raw` is immutable; user edits live in
-    `description_user` so "Restore original" always works (README §7.3)."""
+    `description_user` so "Restore original" always works (README §7.3), and the AI's
+    clean-up of the raw text lives in `description_clean`."""
 
     __tablename__ = "applications"
     __table_args__ = (
@@ -65,6 +66,9 @@ class Application(Base):
     description_raw: Mapped[str | None] = mapped_column(sa.Text)
     description_html: Mapped[str | None] = mapped_column(sa.Text)
     description_user: Mapped[str | None] = mapped_column(sa.Text)
+    #: `description_raw` with page chrome removed and nothing reworded — written only
+    #: once it passes the fidelity check in `services/ai_text.py`.
+    description_clean: Mapped[str | None] = mapped_column(sa.Text)
     extraction_meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     # ── lifecycle ─────────────────────────────────────────────────────────
@@ -109,5 +113,5 @@ class Application(Base):
 
     @property
     def description(self) -> str | None:
-        """What the UI shows: the user's edit shadows the extracted text."""
-        return self.description_user or self.description_raw
+        """What the UI shows: the user's edit, else the cleaned text, else the raw."""
+        return self.description_user or self.description_clean or self.description_raw

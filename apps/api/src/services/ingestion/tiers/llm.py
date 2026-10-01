@@ -6,7 +6,6 @@ schema-constrained output, on cleaned and truncated text.
 """
 
 import logging
-import os
 from datetime import date, datetime
 from typing import Literal
 
@@ -14,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from src.core.config import settings
 from src.schemas.extraction import ExtractedPosting
+from src.services import ai
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class LLMUnavailable(RuntimeError):
 
 
 def enabled() -> bool:
-    return bool(settings.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY"))
+    return ai.enabled()
 
 
 def extract(text: str, *, url: str | None = None) -> ExtractedPosting | None:
@@ -69,12 +69,10 @@ def extract(text: str, *, url: str | None = None) -> ExtractedPosting | None:
     cleaned = cleaned[: settings.llm_max_input_chars]
 
     try:
-        import anthropic
-    except ImportError:  # pragma: no cover - optional dependency
-        logger.info("LLM tier requested but the anthropic package is not installed")
+        client = ai.client()
+    except ai.AIUnavailable as exc:
+        logger.info("LLM tier skipped: %s", exc)
         return None
-
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key or None)
 
     prompt = f"Job posting URL: {url or 'unknown'}\n\n---\n{cleaned}\n---"
     try:
@@ -85,7 +83,9 @@ def extract(text: str, *, url: str | None = None) -> ExtractedPosting | None:
             messages=[{"role": "user", "content": prompt}],
             output_format=LLMExtraction,
         )
-    except anthropic.APIError:
+    except Exception as exc:
+        if not ai.is_sdk_error(exc):
+            raise
         logger.exception("LLM extraction failed for %s", url)
         return None
 
