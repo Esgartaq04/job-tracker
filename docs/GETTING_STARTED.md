@@ -46,8 +46,9 @@ Everything is an environment variable; defaults are in `apps/api/src/core/config
 | `DATABASE_URL` | `sqlite+pysqlite:///./job_tracker.db` | Use `postgresql+psycopg://…` in any deployed environment |
 | `REDIS_URL` | *(unset)* | When unset, ingestion runs in-process and SSE uses an in-memory hub |
 | `JWT_SECRET` | `dev-secret-change-me` | **Change this before deploying** |
-| `ANTHROPIC_API_KEY` | *(unset)* | Enables Tier 4 (LLM structuring). Without it the pipeline stops at Tier 3 |
-| `LLM_MODEL` | `claude-sonnet-5` | Model used for the extraction fallback |
+| `ANTHROPIC_API_KEY` | *(unset)* | Enables every AI feature: Tier 4 (LLM structuring), the description clean-up, cover letters, and the extension's resume reading and field matching. Without it the pipeline stops at Tier 3, descriptions stay raw, and the other three answer 503 with the reason |
+| `LLM_MODEL` | `claude-sonnet-5` | Model used by all of the above |
+| `LLM_MONTHLY_CALL_CAP` | `500` | AI calls per user per month, all features together. Past it, Tier 4 and the clean-up quietly skip and the buttons answer 429 |
 | `INGEST_BROWSER_ENABLED` | `0` | Enables Tier 3 (Playwright). Install the `browser` extra first |
 | `STALE_WARN_DAYS` / `STALE_DIM_DAYS` | `14` / `30` | When a card goes amber, then grey |
 | `REMINDER_EMAIL_ENABLED` | `false` | Email digests. Needs a provider — see below |

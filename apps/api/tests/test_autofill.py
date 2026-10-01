@@ -146,6 +146,23 @@ def test_essay_questions_are_left_for_the_user(auth_client: TestClient):
     assert needs(result) == {"q": "this wants your own words"}
 
 
+def test_name_and_address_rules_stay_narrow(auth_client: TestClient):
+    result = plan(
+        auth_client,
+        [
+            field("n", "Name"),
+            field("s", "Name of your school"),
+            field("a", "Street address"),
+            field("l", "Current location"),
+        ],
+    )
+    assert values(result) == {
+        "n": "Esteven Garcia",
+        "s": "University of Illinois",
+        "l": "Chicago, IL, United States",
+    }
+
+
 def test_a_country_select_takes_its_own_spelling(auth_client: TestClient):
     result = plan(
         auth_client,

@@ -69,12 +69,57 @@ in, loads the board and `/reminders`, and holds the SSE stream open with no CORS
 **Nothing is deployed.** That step needs accounts — Vercel, Render, Neon — and the
 secrets that go with them.
 
-## Phase 4 / Phase 5 — not started
+## Phase 4 — The extension ✅ *(re-planned)*
 
-Skill-gap analysis and Gmail integration are deliberately untouched. The schema is ready
-for both: `company_domain` is populated at ingest for v2's email matching, and
-`status_events` carries `source`, `confidence`, and `evidence` columns so an
-email-derived transition is distinguishable from one you made by hand.
+**The duplicate-save bug.** Saving two jobs from one page could save the first one twice.
+The extractor sent `link[rel=canonical]` whenever a page had one, and on single-page
+boards that link can be stale — still naming the job the page first loaded — or drop the
+query parameter that identifies this job (Google's apply form is `/apply?jobId=…`). Two
+jobs then posted one URL, the server's dedup returned the first card, and the popup said
+"Saved". The canonical link is now trusted only when it has the same path and keeps
+every identifying parameter; otherwise the address bar wins and the stale head metadata
+is stripped before the HTML is sent. LinkedIn `currentJobId` and Indeed `vjk` panes
+resolve to the job's own page. The popup says "Already on your board" for a duplicate,
+and a card that was already read in full is no longer patched from the posted page.
+
+Honest note: on the public Google Careers pages, clicking between jobs *did* update the
+canonical link when this was tested (Playwright, 2026-10-01), so that path wasn't the
+culprit. The apply flow, which needs a signed-in Google account, couldn't be inspected; it
+puts the job's identity only in the query string, which is exactly the shape the old code
+collapsed. `test/spa.mjs` covers both shapes offline.
+
+**Autofill — fill, never submit.** The popup's *Autofill application…* opens a side panel
+(a popup closes the moment a file dialog takes focus). The user picks a resume, the API
+reads it into a profile, and *Fill this page* fills the form. Standard fields (name,
+email, phone, links, location, school) are matched by `autocomplete` or label with no
+model; only the leftovers go to the model, and its answers must name a real field and a
+real option. The extension sets values the way typing does (prototype setter plus
+`input`/`change`), so React-controlled forms register them, attaches the resume to the
+file input, and outlines what it filled in green and what it left in amber.
+
+Not handled: custom combobox widgets (Workday's and react-select's dropdowns aren't
+`<select>`s), CAPTCHAs, and essay questions all land in "needs you". A multi-page form
+needs one *Fill again* per page.
+
+## Phase 5 — AI in the tracker ✅ *(re-planned)*
+
+**Description clean-up.** After a job is saved, a background job sends the raw
+description to the model with the instruction "I have the following job description
+please clean it up. DONT reword or re write it:". The reply lands in `description_clean`
+only if it passes `ai_text.faithful()`; otherwise the raw text stays and
+`extraction_meta.cleanup` records why. The drawer shows the cleaned text with a
+*Show original* toggle and a *Clean up* button for older cards.
+
+**Cover letters.** A *Cover letter* tab in the drawer: once the description is clean,
+upload a resume (PDF or .docx) and optional notes, and the model writes a 250–400 word
+letter from the cleaned description and that resume only. The letter can be edited,
+copied, regenerated, and downloaded as .docx.
+
+**Shared plumbing.** `services/ai.py` owns the client, resume intake, and the per-user
+monthly cap, which existed in config but was never enforced; it is now, through an
+`llm_calls` table that Tier 4 also counts against. The original Phase 4 (gated skill-gap
+analysis) and Phase 5 (Gmail sync) are dropped; the email-matching hooks in the schema
+stay.
 
 ---
 
@@ -149,6 +194,35 @@ that the secret is worth guessing.
 neighbours get within `1e-6` of each other the column is re-spaced on the spot, inside the
 same request. LexoRank would avoid the precision issue entirely and remains the upgrade
 path if re-spacing ever shows up in traces.
+
+**"Don't reword" is checked, not trusted.** A prompt can ask a model not to rewrite
+text, but it can't promise it. The clean-up is accepted only when ≥97% of its 5-word runs
+appear verbatim in the original (with a small allowance so a short posting survives a
+repeated heading) and it kept a real share of the text. A clean-up that fails is thrown
+away. A noisy description is a nuisance; one that has been quietly reworded misstates
+the job.
+
+**Resumes are never stored.** Uploaded for one call — reading a profile, writing a
+letter — and discarded; a PDF goes to the model as a document block, so there isn't even
+a parsed copy. The extension keeps the file in the side panel's memory and nothing else.
+The cost is re-uploading for each letter, which was the explicit choice.
+
+**Some questions are never answered for you.** Work authorization, sponsorship,
+demographics, salary, criminal history, and any consent or attestation are matched by
+rule *before* the model sees the form and always come back as "needs you". The model is
+also told to skip them, and any answer it gives is re-checked. A wrong answer to any of
+these can't be taken back once submitted.
+
+**The autofill asks for each form's site when you use it.** Same pattern as Connect:
+`optional_host_permissions` plus a request from the *Fill this page* click, for exactly
+that origin. Without the `tabs` permission (which Chrome describes as "read your browsing
+history") the panel can only see the tab's URL while the toolbar click's grant lasts or
+once the origin is allowed, so on a brand-new site the user may need to click the toolbar
+button once first. The panel says so.
+
+**A cover letter waits for the clean-up.** Writing one against the raw scrape would let
+cookie banners and "similar jobs" into the prompt. The API answers 409 until the
+clean-up has run, and uses the raw text only once the clean-up has run and declined.
 
 ## Open questions from README §11
 

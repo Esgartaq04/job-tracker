@@ -151,13 +151,14 @@ LABEL_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"e-?mail"), "email"),
     (re.compile(r"phone|mobile|\btel\b"), "phone"),
     (re.compile(r"portfolio|personal (web)?site|website|\burl\b"), "website_url"),
-    (re.compile(r"full[\s_-]*name|legal name|^name\b|your name"), "full_name"),
+    (re.compile(r"full[\s_-]*name|legal[\s_-]*name"), "full_name"),
     (re.compile(r"current (company|employer)|most recent (company|employer)"), "current_company"),
     (re.compile(r"current (job )?title|current role|most recent title"), "current_title"),
     (re.compile(r"\bcity\b"), "city"),
     (re.compile(r"\b(state|province|region)\b"), "region"),
     (re.compile(r"\bcountry\b"), "country"),
-    (re.compile(r"location|where are you based|address"), "location"),
+    # Not "address": a street address wants a street, not "Chicago, IL".
+    (re.compile(r"location|where are you based|where do you live"), "location"),
     (re.compile(r"school|university|college|institution"), "school"),
     (re.compile(r"\bdegree\b"), "degree"),
 ]
@@ -167,6 +168,9 @@ def _rule_for(field: FormField) -> str | None:
     token = (field.autocomplete or "").lower().split()[-1:] or [""]
     if token[0] in AUTOCOMPLETE:
         return AUTOCOMPLETE[token[0]]
+    # A field labelled just "Name" is the applicant's; "Name of your school" is not.
+    if re.fullmatch(r"(your |full |legal )?name", field.label.strip().lower()):
+        return "full_name"
     text = _text(field)
     for pattern, key in LABEL_RULES:
         if pattern.search(text):
