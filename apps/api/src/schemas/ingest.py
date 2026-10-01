@@ -3,6 +3,7 @@ import uuid
 from pydantic import BaseModel, Field
 
 from src.models.enums import IngestStatus
+from src.schemas.application import ApplicationDetailOut
 
 
 class IngestRequest(BaseModel):
@@ -55,3 +56,11 @@ class IngestAccepted(BaseModel):
 
 class IngestBatchAccepted(BaseModel):
     accepted: list[IngestAccepted]
+
+
+class IngestFromDomOut(ApplicationDetailOut):
+    """The card the extension's save landed on. `duplicate` says it was already on the
+    board, so the popup can say so — a URL that matched the wrong card used to look
+    exactly like a successful save."""
+
+    duplicate: bool = False

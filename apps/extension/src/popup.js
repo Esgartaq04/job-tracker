@@ -52,8 +52,16 @@ async function save(markApplied) {
   clearTimeout(waking);
 
   if (response?.ok) {
-    const { company, title } = response.application ?? {};
-    el("status").textContent = `Saved ${[company, title].filter(Boolean).join(" — ") || "posting"}`;
+    const { company, title, duplicate } = response.application ?? {};
+    const name = [company, title].filter(Boolean).join(" — ") || "posting";
+    if (duplicate) {
+      // Said plainly and left open: if this isn't the job on screen, the user needs to
+      // see that rather than a confident "Saved" that hides it.
+      el("status").textContent = `Already on your board: ${name}`;
+      el("status").className = "";
+      return;
+    }
+    el("status").textContent = `Saved ${name}`;
     el("status").className = "ok";
     setTimeout(() => window.close(), 1200);
   } else {

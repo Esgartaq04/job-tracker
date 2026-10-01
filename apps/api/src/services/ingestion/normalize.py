@@ -95,11 +95,17 @@ def canonicalize(url: str) -> str:
     if len(path) > 1:
         path = path.rstrip("/")
 
-    query_pairs = [
-        (key, value)
-        for key, value in parse_qsl(parts.query, keep_blank_values=False)
-        if not _is_tracking(key)
-    ]
+    pairs = parse_qsl(parts.query, keep_blank_values=False)
+
+    # LinkedIn's search and collection panes name the open job in `currentJobId`, so
+    # the same posting arrives as many different search URLs. Key it by the job's own
+    # page, which is also what the browser extension sends.
+    if host.endswith("linkedin.com") and path.startswith(("/jobs/search", "/jobs/collections")):
+        job_id = dict(pairs).get("currentJobId", "")
+        if job_id.isdigit():
+            return f"https://www.linkedin.com/jobs/view/{job_id}"
+
+    query_pairs = [(key, value) for key, value in pairs if not _is_tracking(key)]
     query = urlencode(sorted(query_pairs))
 
     return urlunsplit(("https", netloc, path, query, ""))

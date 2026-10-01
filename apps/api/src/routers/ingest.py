@@ -10,6 +10,7 @@ from src.schemas.ingest import (
     IngestAccepted,
     IngestBatchAccepted,
     IngestBatchRequest,
+    IngestFromDomOut,
     IngestFromDomRequest,
     IngestFromTextRequest,
     IngestRequest,
@@ -126,13 +127,21 @@ def ingest_batch(
     return IngestBatchAccepted(accepted=accepted)
 
 
-@router.post("/from-dom", response_model=ApplicationDetailOut)
+@router.post("/from-dom", response_model=IngestFromDomOut)
 def ingest_from_dom(
     payload: IngestFromDomRequest, user: CurrentUser, db: DbSession
-) -> ApplicationDetailOut:
+) -> IngestFromDomOut:
     """Browser-extension path: the user's own browser already rendered the page, so
     we parse the DOM they POST instead of scraping the site (README §4.1)."""
-    application, _ = _provisional(db, user, payload.url, mark_as_applied=payload.mark_as_applied)
+    application, duplicate = _provisional(
+        db, user, payload.url, mark_as_applied=payload.mark_as_applied
+    )
+    if duplicate and application.ingest_status == IngestStatus.ok:
+        # Already fully read. Re-running would only fill this card's blanks from
+        # whatever page was posted — harmless when it's the same posting, and quietly
+        # wrong when the URL matched a different one.
+        return _from_dom_out(application, duplicate=True)
+
     outcome = pipeline.run_pipeline(
         application.source_url,
         html=payload.html,
@@ -164,7 +173,13 @@ def ingest_from_dom(
         "ingest.completed",
         {"application_id": str(application.id), "ingest_status": application.ingest_status.value},
     )
-    return to_out(application, detail=True)
+    return _from_dom_out(application, duplicate=duplicate)
+
+
+def _from_dom_out(application: Application, *, duplicate: bool) -> IngestFromDomOut:
+    return IngestFromDomOut(
+        **to_out(application, detail=True).model_dump(), duplicate=duplicate
+    )
 
 
 @router.post("/from-text", response_model=ApplicationDetailOut)
