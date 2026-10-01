@@ -11,10 +11,11 @@ import { STATUSES, STATUS_LABELS } from "../../api/types";
 import type { AppStatus } from "../../api/types";
 import { employmentLabel, faviconFor, formatDate, formatSalary } from "../../lib/format";
 import { useUi } from "../../lib/store";
+import { CoverLetter } from "./CoverLetter";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { Timeline } from "./Timeline";
 
-type TabName = "overview" | "description" | "timeline";
+type TabName = "overview" | "description" | "cover letter" | "timeline";
 
 /**
  * Right-hand slide-over, never a route change — the board stays mounted behind it
@@ -175,7 +176,7 @@ export function Drawer() {
             </header>
 
             <nav className="flex gap-1 border-b border-surface-border px-4">
-              {(["overview", "description", "timeline"] as TabName[]).map((name) => (
+              {(["overview", "description", "cover letter", "timeline"] as TabName[]).map((name) => (
                 <button
                   key={name}
                   type="button"
@@ -280,6 +281,7 @@ export function Drawer() {
               )}
 
               {tab === "description" && <DescriptionEditor application={application} />}
+              {tab === "cover letter" && <CoverLetter application={application} />}
               {tab === "timeline" && <Timeline events={application.events} />}
             </div>
           </>

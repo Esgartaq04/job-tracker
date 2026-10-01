@@ -70,6 +70,8 @@ export interface Application {
   description: string | null;
   description_raw: string | null;
   description_user: string | null;
+  /** `description_raw` with page chrome removed by AI — never reworded (Phase 5a). */
+  description_clean: string | null;
   extraction_meta: Record<string, unknown>;
 
   status: AppStatus;
@@ -163,4 +165,18 @@ export interface ImportReport {
   duplicates: number;
   skipped: { line: number; reason: string }[];
   unmapped_columns: string[];
+}
+
+/** `extraction_meta.cleanup`: how the AI clean-up of the description went. */
+export interface CleanupMeta {
+  status: "ok" | "rejected" | "skipped";
+  reason: string | null;
+}
+
+export interface CoverLetter {
+  id: string;
+  application_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string | null;
 }

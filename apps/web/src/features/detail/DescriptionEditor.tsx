@@ -1,28 +1,45 @@
 import { useEffect, useState } from "react";
 
-import type { ApplicationDetail } from "../../api/types";
-import { useUpdateApplication } from "../../api/hooks";
+import type { ApplicationDetail, CleanupMeta } from "../../api/types";
+import { useCleanDescription, useUpdateApplication } from "../../api/hooks";
+import { useUi } from "../../lib/store";
 
 /**
- * `description_user` shadows `description_raw`; "Restore original" always works
- * because the raw copy is immutable (README §7.3). A subtle line records which
- * tier produced the text — useful when a field looks wrong.
+ * Three layers, most specific first: the user's edit, the AI clean-up, the raw scrape.
+ * "Restore original" always works because the raw copy is immutable (README §7.3), and
+ * the cleaned text is only ever the raw text with page chrome deleted — the server
+ * throws away any clean-up that reworded it — so showing it by default is safe.
  */
 export function DescriptionEditor({ application }: { application: ApplicationDetail }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(application.description ?? "");
+  const [showOriginal, setShowOriginal] = useState(false);
   const update = useUpdateApplication(application.id);
+  const clean = useCleanDescription(application.id);
+  const notify = useUi((state) => state.notify);
 
+  const edited = Boolean(application.description_user);
+  const hasClean = Boolean(application.description_clean);
+  const shown = edited
+    ? application.description_user
+    : hasClean && !showOriginal
+      ? application.description_clean
+      : application.description_raw;
+
+  const [draft, setDraft] = useState(shown ?? "");
+  useEffect(() => setEditing(false), [application.id]);
+  // Not while editing: the background clean-up can land mid-edit and change `shown`.
   useEffect(() => {
-    setDraft(application.description ?? "");
-  }, [application.id, application.description]);
+    if (!editing) setDraft(shown ?? "");
+  }, [application.id, shown, editing]);
 
   const meta = application.extraction_meta as {
     tier?: string | null;
     confidence?: number | null;
     needs_verification?: boolean;
+    cleanup?: CleanupMeta;
   };
-  const edited = Boolean(application.description_user);
+  const cleanup = meta.cleanup;
+  const canClean = !edited && !hasClean && Boolean(application.description_raw);
 
   return (
     <section>
@@ -37,7 +54,7 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
                 type="button"
                 className="text-slate-400 hover:text-slate-200"
                 onClick={() => {
-                  setDraft(application.description ?? "");
+                  setDraft(shown ?? "");
                   setEditing(false);
                 }}
               >
@@ -56,6 +73,30 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
             </>
           ) : (
             <>
+              {!edited && hasClean && (
+                <button
+                  type="button"
+                  className="text-slate-400 hover:text-slate-200"
+                  onClick={() => setShowOriginal((value) => !value)}
+                >
+                  {showOriginal ? "Show cleaned" : "Show original"}
+                </button>
+              )}
+              {canClean && (
+                <button
+                  type="button"
+                  disabled={clean.isPending}
+                  className="text-slate-400 hover:text-slate-200 disabled:opacity-60"
+                  title="Remove page clutter with AI, without rewording anything"
+                  onClick={() =>
+                    clean.mutate(undefined, {
+                      onError: (error) => notify(error.message, "error"),
+                    })
+                  }
+                >
+                  {clean.isPending ? "Cleaning…" : "Clean up"}
+                </button>
+              )}
               <button
                 type="button"
                 className="text-slate-400 hover:text-slate-200"
@@ -68,7 +109,7 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
                   type="button"
                   className="text-slate-400 hover:text-slate-200"
                   onClick={() => update.mutate({ description_user: null })}
-                  title="Discard your edits and show the archived original"
+                  title="Discard your edits and show the description as saved"
                 >
                   Restore original
                 </button>
@@ -86,9 +127,9 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
           className="w-full rounded-md border border-surface-border bg-surface-raised p-3 font-mono text-xs text-slate-200 focus:border-accent focus:outline-none"
           placeholder="Paste the description yourself…"
         />
-      ) : application.description ? (
+      ) : shown ? (
         <div className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-surface-border bg-surface-raised p-3 text-sm leading-relaxed text-slate-300">
-          {application.description}
+          {shown}
         </div>
       ) : (
         <div className="rounded-md border border-dashed border-surface-border p-4 text-center text-sm text-slate-500">
@@ -106,9 +147,17 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
       <p className="mt-1.5 text-[11px] text-slate-500">
         {edited
           ? "Edited by you"
-          : meta.tier
-            ? `Extracted via ${meta.tier}`
-            : "Not yet extracted"}
+          : hasClean && !showOriginal
+            ? "Cleaned up by AI — page clutter removed, nothing reworded"
+            : meta.tier
+              ? `Extracted via ${meta.tier}`
+              : "Not yet extracted"}
+        {!edited && !hasClean && cleanup && cleanup.status !== "ok" && (
+          <span className="ml-1" title={cleanup.reason ?? undefined}>
+            · AI clean-up {cleanup.status === "rejected" ? "discarded" : "skipped"}
+            {cleanup.reason ? ` (${cleanup.reason})` : ""}
+          </span>
+        )}
         {meta.needs_verification && (
           <span className="ml-1 text-stale-warn" title="Low-confidence extraction">
             · verify these fields

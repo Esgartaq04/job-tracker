@@ -114,3 +114,60 @@ def user(db_session) -> User:
     db_session.add(row)
     db_session.commit()
     return row
+
+
+@pytest.fixture(autouse=True)
+def cleanups(monkeypatch) -> list:
+    """Capture description clean-up enqueues, for the same reason as `enqueued`."""
+    calls: list = []
+    monkeypatch.setattr(
+        "src.services.ingestion.queue.enqueue_cleanup",
+        lambda application_id: calls.append(application_id),
+    )
+    return calls
+
+
+class FakeAI:
+    """Stands in for the Anthropic client. Queue replies with `reply()` (text) or
+    `parsed()` (structured output); every request is kept in `requests`."""
+
+    def __init__(self) -> None:
+        from types import SimpleNamespace
+
+        self._ns = SimpleNamespace
+        self.requests: list[dict] = []
+        self._replies: list = []
+        self.messages = SimpleNamespace(create=self._create, parse=self._parse)
+
+    def reply(self, text: str, stop_reason: str = "end_turn") -> "FakeAI":
+        self._replies.append(("text", text, stop_reason))
+        return self
+
+    def parsed(self, value) -> "FakeAI":
+        self._replies.append(("parsed", value, "end_turn"))
+        return self
+
+    def _next(self, kind: str, request: dict):
+        self.requests.append(request)
+        assert self._replies, "the code made a model call the test didn't expect"
+        got, value, stop_reason = self._replies.pop(0)
+        assert got == kind, f"expected a {got} call, got {kind}"
+        return value, stop_reason
+
+    def _create(self, **request):
+        text, stop_reason = self._next("text", request)
+        return self._ns(content=[self._ns(type="text", text=text)], stop_reason=stop_reason)
+
+    def _parse(self, **request):
+        value, stop_reason = self._next("parsed", request)
+        return self._ns(parsed_output=value, content=[], stop_reason=stop_reason)
+
+
+@pytest.fixture
+def fake_ai(monkeypatch) -> FakeAI:
+    from src.core.config import settings
+
+    fake = FakeAI()
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr("src.services.ai.client", lambda: fake)
+    return fake

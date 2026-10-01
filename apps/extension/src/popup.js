@@ -10,6 +10,10 @@ import {
 
 const el = (id) => document.getElementById(id);
 
+/** Known before any click: `sidePanel.open` must run inside the click's gesture, and
+ *  awaiting a tab query first would spend it. */
+let activeTabId = null;
+
 function fail(message) {
   el("settings-status").textContent = message;
   el("settings-status").className = "error";
@@ -26,6 +30,7 @@ async function render() {
   el("token").value = token;
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  activeTabId = tab?.id ?? null;
   el("page").textContent = tab?.title ?? tab?.url ?? "";
 
   // No token — or a token whose host we're not allowed to reach — means nothing works,
@@ -52,8 +57,16 @@ async function save(markApplied) {
   clearTimeout(waking);
 
   if (response?.ok) {
-    const { company, title } = response.application ?? {};
-    el("status").textContent = `Saved ${[company, title].filter(Boolean).join(" — ") || "posting"}`;
+    const { company, title, duplicate } = response.application ?? {};
+    const name = [company, title].filter(Boolean).join(" — ") || "posting";
+    if (duplicate) {
+      // Said plainly and left open: if this isn't the job on screen, the user needs to
+      // see that rather than a confident "Saved" that hides it.
+      el("status").textContent = `Already on your board: ${name}`;
+      el("status").className = "";
+      return;
+    }
+    el("status").textContent = `Saved ${name}`;
     el("status").className = "ok";
     setTimeout(() => window.close(), 1200);
   } else {
@@ -65,6 +78,19 @@ async function save(markApplied) {
 el("save-btn").addEventListener("click", () => save(false));
 el("save-applied-btn").addEventListener("click", () => save(true));
 el("settings-btn").addEventListener("click", () => show("settings"));
+
+// The side panel stays open beside the form, which a popup can't: it closes the moment
+// a file dialog takes focus.
+el("autofill-btn").addEventListener("click", () => {
+  if (activeTabId === null) return;
+  chrome.sidePanel
+    .open({ tabId: activeTabId })
+    .then(() => window.close())
+    .catch((error) => {
+      el("status").textContent = `Couldn't open the autofill panel: ${error.message}`;
+      el("status").className = "error";
+    });
+});
 
 el("save-settings").addEventListener("click", async () => {
   const apiBase = normalizeBase(el("api-base").value) || DEFAULTS.apiBase;

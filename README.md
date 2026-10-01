@@ -2,7 +2,7 @@
 
 > **Status:** Draft v0.1 · **Owner:** Esteven · **Last updated:** 2026-08-04
 
-> **This document is now implemented through Phase 3.**
+> **This document is now implemented through Phase 5.**
 > Run it: [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) · Ship it:
 > [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) · What's built and what isn't:
 > [`docs/STATUS.md`](docs/STATUS.md).
@@ -11,8 +11,10 @@
 > docker compose up --build       # http://localhost:5173
 > ```
 >
-> The rest of this file is the original design document, unchanged. Where the
-> implementation deviates from it, `docs/STATUS.md` says so and why.
+> The rest of this file is the original design document. Phases 4 and 5 were
+> re-planned for a small app with few users (§10), which also narrows one non-goal
+> (§1.2); both are marked *revised*. Everywhere else, where the implementation
+> deviates from it, `docs/STATUS.md` says so and why.
 
 ---
 
@@ -34,6 +36,9 @@ The product bet: *the cost of logging an application is the reason people stop l
 ### 1.2 Non-goals (explicitly out of scope)
 
 - **Auto-applying to jobs.** Distinct product, distinct risk profile. Keep it separate.
+  *Revised:* the extension may **fill** an application form from the user's resume
+  (Phase 4), but never submits it — the user reviews every field and presses Submit.
+  Applying on someone's behalf stays out of scope.
 - **Job discovery / search aggregation.** This tool tracks what the user found elsewhere.
 - **Multi-user, teams, or recruiter-side features.** Single-tenant per user.
 - **Mobile native apps.** Responsive web only.
@@ -582,13 +587,15 @@ Async worker, URL normalization, Tier 0 (JSON-LD), Tier 1 adapters for Greenhous
 Full-text search, filters, tags, staleness indicators, reminders (`next_action_at` + email/browser notification), the Insights view, CSV import/export, browser extension for LinkedIn/Indeed capture, PWA share target.
 **Exit:** the app tells you something you didn't already know about your own pipeline.
 
-### Phase 4 — AI, conditionally *(~2 weeks, gated)*
-Only if Phase 3 usage shows demand. Skill gap analysis, resume version tracking against outcomes, interview prep generation.
-**Gate:** ≥100 applications logged and a specific articulated need. If neither, skip to v2.
+### Phase 4 — The extension *(revised)*
+Fix: saving two listings from one single-page board must save two cards, not the first one twice. Then a fill-only **autofill**: the user uploads a resume in a side panel, and the extension fills the application form on the page — standard fields by rule, the rest by AI against the resume, sensitive questions (work authorization, sponsorship, demographics, salary, attestations) always left to the user. It never submits.
+**Exit:** an application form on a common ATS is mostly filled in from a resume, and nothing is sent until the user presses Submit.
 
-### Phase 5 — v2 Email *(~4+ weeks, plus verification lead time)*
-Google OAuth, Pub/Sub watch, matching cascade, suggestion UI, privacy screens, verification submission.
-**Exit:** status changes start arriving without you touching the board.
+### Phase 5 — AI in the tracker *(revised)*
+When a job is saved, AI cleans the scraped description — "clean it up, don't reword or rewrite it" — and the result is kept only if it provably deleted rather than rewrote. Once a description is clean, a **Generate cover letter** button takes a resume uploaded for that listing and writes a letter from the clean description and that resume only. Resumes are never stored.
+**Exit:** descriptions read like the posting, not the page around it, and a tailored first-draft cover letter is one upload away.
+
+*Replaced:* the original Phase 4 (gated skill-gap analysis) and Phase 5 (Gmail sync, which needs Google's restricted-scope verification) were sized for a product with many users. The schema hooks for email matching — `company_domain`, `status_events.source/confidence/evidence` — remain if it's ever revisited.
 
 ---
 

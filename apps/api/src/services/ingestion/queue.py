@@ -59,7 +59,37 @@ def enqueue_ingest(application_id: uuid.UUID) -> None:
     _pool().submit(run_ingest_now, application_id)
 
 
-def _enqueue_arq(application_id: uuid.UUID) -> None:
+def run_cleanup_now(application_id: uuid.UUID) -> None:
+    """Clean one description with its own session. Safe to call from any thread."""
+    from src.services.ai_text import run_cleanup
+
+    db = session_scope()
+    try:
+        run_cleanup(db, application_id)
+    except Exception:
+        logger.exception("description cleanup failed for %s", application_id)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def enqueue_cleanup(application_id: uuid.UUID) -> None:
+    """Queue the AI clean-up of a freshly extracted description (Phase 5a). Without a
+    key there's nothing to do, so nothing is queued."""
+    from src.services import ai
+
+    if not ai.enabled():
+        return
+    if settings.redis_url:
+        try:
+            _enqueue_arq(application_id, job="clean_description")
+            return
+        except Exception:  # pragma: no cover - queue outage must not lose the work
+            logger.exception("arq enqueue failed; cleaning in-process")
+    _pool().submit(run_cleanup_now, application_id)
+
+
+def _enqueue_arq(application_id: uuid.UUID, *, job: str = "ingest_application") -> None:
     import asyncio
 
     from arq import create_pool
@@ -68,7 +98,7 @@ def _enqueue_arq(application_id: uuid.UUID) -> None:
     async def _push() -> None:
         redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
         try:
-            await redis.enqueue_job("ingest_application", str(application_id))
+            await redis.enqueue_job(job, str(application_id))
         finally:
             await redis.aclose()
 

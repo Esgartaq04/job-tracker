@@ -21,7 +21,7 @@ from arq import cron  # noqa: E402
 from arq.connections import RedisSettings  # noqa: E402
 
 from src.core.config import settings  # noqa: E402
-from src.services.ingestion.queue import run_ingest_now  # noqa: E402
+from src.services.ingestion.queue import run_cleanup_now, run_ingest_now  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +34,12 @@ async def ingest_application(_ctx: dict, application_id: str) -> None:
     """The pipeline is synchronous (httpx + SQLAlchemy), so it runs in a thread and
     leaves the event loop free to pull the next job."""
     await asyncio.to_thread(run_ingest_now, uuid.UUID(application_id))
+
+
+async def clean_description(_ctx: dict, application_id: str) -> None:
+    """Phase 5a: the AI clean-up of a freshly extracted description. Enqueued by the
+    API after ingestion; a model call, so it runs in a thread like the pipeline."""
+    await asyncio.to_thread(run_cleanup_now, uuid.UUID(application_id))
 
 
 def _sweep() -> dict[str, int]:
@@ -72,7 +78,7 @@ async def startup(_ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [ingest_application, sweep_reminders]
+    functions = [ingest_application, clean_description, sweep_reminders]
     cron_jobs = [
         cron(
             sweep_reminders,

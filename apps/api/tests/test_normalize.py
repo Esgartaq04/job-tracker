@@ -27,6 +27,24 @@ def test_meaningful_query_params_survive_and_sort():
     assert canonicalize("https://example.com/jobs?b=2&a=1") == "https://example.com/jobs?a=1&b=2"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.linkedin.com/jobs/search/?currentJobId=4001&keywords=intern&geoId=1",
+        "https://www.linkedin.com/jobs/collections/recommended/?currentJobId=4001",
+        "https://www.linkedin.com/jobs/view/4001/?trk=public_jobs",
+    ],
+)
+def test_a_linkedin_job_is_one_key_however_it_was_reached(url):
+    assert canonicalize(url) == "https://www.linkedin.com/jobs/view/4001"
+
+
+def test_a_linkedin_search_with_no_open_job_stays_a_search():
+    assert canonicalize("https://www.linkedin.com/jobs/search/?keywords=intern") == (
+        "https://www.linkedin.com/jobs/search?keywords=intern"
+    )
+
+
 def test_a_bare_host_gets_a_scheme():
     assert normalize_url("example.com/jobs/1").startswith("https://")
 

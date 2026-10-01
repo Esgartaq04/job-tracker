@@ -280,6 +280,38 @@ def test_extension_dom_path_parses_without_fetching(auth_client: TestClient):
     assert application["ingest_status"] == "ok"
 
 
+def test_saving_a_tracked_posting_again_says_so_and_leaves_the_card_alone(
+    auth_client: TestClient,
+):
+    """Two different jobs that resolve to one URL used to report "saved" twice and
+    merge the second page into the first card. Now the second save is a visible
+    duplicate, and a card that was already read in full isn't touched."""
+    first_page = """
+    <html><head><script type="application/ld+json">
+    {"@type":"JobPosting","title":"SWE Intern","hiringOrganization":{"name":"Cisco"},
+     "description":"<p>Work on routing.</p>"}
+    </script></head><body></body></html>
+    """
+    url = "https://careers.example.com/apply"
+    first = auth_client.post(f"{API}/ingest/from-dom", json={"url": url, "html": first_page})
+    assert first.json()["duplicate"] is False
+
+    second = auth_client.post(
+        f"{API}/ingest/from-dom",
+        json={
+            "url": url,
+            "html": "<html><body><h1>Data Analyst</h1></body></html>",
+            "hints": {"title": "Data Analyst", "location": "Austin, TX"},
+        },
+    )
+    assert second.status_code == 200
+    body = second.json()
+    assert body["duplicate"] is True
+    assert body["id"] == first.json()["id"]
+    assert body["title"] == "SWE Intern"
+    assert body["location"] is None
+
+
 def test_funnel_counts_stages_ever_reached(auth_client: TestClient):
     reached_offer = create(auth_client, title="A")
     rejected = create(auth_client, title="B")

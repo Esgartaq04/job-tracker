@@ -52,6 +52,7 @@ class ApplicationOut(BaseModel):
     description: str | None = None
     description_raw: str | None = None
     description_user: str | None = None
+    description_clean: str | None = None
     extraction_meta: dict = Field(default_factory=dict)
 
     status: AppStatus
