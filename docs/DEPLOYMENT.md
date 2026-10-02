@@ -189,7 +189,7 @@ Every setting, with the real defaults from `core/config.py`:
 | `REDIS_URL` | **unset** | Setting it without running a worker means jobs enqueue and nothing consumes them |
 | `JWT_SECRET` | 48 random bytes | Default `dev-secret-change-me` signs every session |
 | `CORS_ORIGINS` | `["https://<your-app>.vercel.app"]` | Parsed as a **JSON list** by pydantic-settings. Add the custom domain when you add one |
-| `ANTHROPIC_API_KEY` | optional | Tier 4 only. `llm_monthly_call_cap` already caps it at 500 calls/month |
+| `ANTHROPIC_API_KEY` | needed for AI features | Every AI feature: Tier 4, the description clean-up on each save, cover letters, and the extension's autofill. Without it descriptions stay raw and those buttons answer 503. `llm_monthly_call_cap` caps them all together at 500 calls per user per month |
 | `INGEST_BROWSER_ENABLED` | leave unset | Read directly by `tiers/browser.py`; anything but `1`/`true`/`yes` is off |
 | `REMINDER_EMAIL_ENABLED` | `false` | `notify.py` has no provider — a `true` here changes nothing but the log |
 | `REMINDER_SWEEP_HOUR_UTC` | `13` | 8am Chicago in summer, 7am in winter. Read by the **worker's** arq cron only; the GitHub Actions schedule has its own time |
@@ -285,7 +285,7 @@ trying to conserve. `/healthz` touches nothing.
 | | Monthly |
 |---|---|
 | Vercel Hobby + Render free + Neon free | $0 |
-| Anthropic API (Tier 4 only) | ~$0–2 |
+| Anthropic API (a clean-up per saved job, plus cover letters and autofill on demand) | ~$1–5 |
 | Same with Fly instead of Render free | ~$2–6 |
 
 The one line item that can surprise you is Tier 4, which fires whenever the cheap tiers
