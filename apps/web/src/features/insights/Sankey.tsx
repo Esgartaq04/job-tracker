@@ -1,5 +1,5 @@
 import { sankey, sankeyLeft, sankeyLinkHorizontal, type SankeyLink, type SankeyNode } from "d3-sankey";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { STATUS_LABELS, type Flow, type FlowApplication, type FlowNode } from "../../api/types";
 import { useUi } from "../../lib/store";
@@ -30,6 +30,10 @@ const HEIGHT = 340;
 const MIN_WIDTH = 620;
 // Matches the popover's w-72, so it can be kept inside the panel.
 const POPOVER_WIDTH = 288;
+// Space between the click and the popover's edge.
+const POPOVER_GAP = 10;
+// A soft ring for keyboard focus; paths have no outline to draw.
+const FOCUS_RING = "focus-visible:[filter:drop-shadow(0_0_3px_rgb(241_245_249))]";
 
 /** What a click on a branch or node opened: which listings, and where to show them. */
 interface Selection {
@@ -37,7 +41,8 @@ interface Selection {
   title: string;
   ids: string[];
   x: number;
-  y: number;
+  /** Where the click landed, from the top of the chart; the popover goes below or above. */
+  anchorY: number;
   trigger: SVGElement;
 }
 
@@ -65,6 +70,15 @@ export function Sankey({ flow }: { flow: Flow }) {
   // point at a branch that may no longer exist.
   useEffect(() => setSelected(null), [flow]);
 
+  /** `refocus` hands focus back to the branch, for when it was inside the popover. */
+  const close = useCallback(
+    (refocus: boolean) => {
+      if (refocus && selected?.trigger.isConnected) selected.trigger.focus({ preventScroll: true });
+      setSelected(null);
+    },
+    [selected],
+  );
+
   const graph = useMemo(() => {
     if (flow.links.length === 0) return null;
     return (
@@ -91,11 +105,15 @@ export function Sankey({ flow }: { flow: Flow }) {
     [flow],
   );
 
+  // The root is the same element in both states, and is where focus lands if the drawer
+  // closes after the branch that opened it is gone.
   if (!graph) {
     return (
-      <p className="py-10 text-center text-sm text-slate-500">
-        Nothing sent yet. Move a card to Applied and the flow starts here.
-      </p>
+      <div ref={frame} data-focus-fallback tabIndex={-1} className="relative outline-none">
+        <p className="py-10 text-center text-sm text-slate-500">
+          Nothing sent yet. Move a card to Applied and the flow starts here.
+        </p>
+      </div>
     );
   }
 
@@ -126,7 +144,7 @@ export function Sankey({ flow }: { flow: Flow }) {
       title,
       ids,
       x: Math.max(0, Math.min(clientX - (bounds?.left ?? 0), frameWidth - POPOVER_WIDTH)),
-      y: clientY - (bounds?.top ?? 0) + 10,
+      anchorY: clientY - (bounds?.top ?? 0),
       trigger,
     });
   }
@@ -143,8 +161,17 @@ export function Sankey({ flow }: { flow: Flow }) {
     key === nodeKey((link.source as LaidNode).id) || key === nodeKey((link.target as LaidNode).id);
 
   return (
-    <div ref={frame} className="relative">
-      <div ref={container} className="overflow-x-auto">
+    <div ref={frame} data-focus-fallback tabIndex={-1} className="relative outline-none">
+      <div
+        ref={container}
+        className="overflow-x-auto"
+        // The popover doesn't scroll with the chart, so it would end up pointing at the
+        // wrong branch.
+        onScroll={() => {
+          if (!selected) return;
+          close(Boolean(document.activeElement?.closest("[data-flow-popover]")));
+        }}
+      >
         <svg
           width={width}
           height={HEIGHT}
@@ -167,12 +194,13 @@ export function Sankey({ flow }: { flow: Flow }) {
                   key={key}
                   data-flow-key={key}
                   d={path(link) ?? undefined}
-                  className={`${KIND[target.id].stroke} cursor-pointer outline-none`}
+                  className={`${KIND[target.id].stroke} cursor-pointer outline-none ${FOCUS_RING}`}
                   strokeWidth={Math.max(2, link.width ?? 0)}
                   strokeOpacity={dimmed ? 0.12 : lit ? 0.7 : 0.38}
                   tabIndex={0}
                   role="button"
                   aria-label={`${title}: ${link.value} ${link.value === 1 ? "application" : "applications"}`}
+                  aria-haspopup="dialog"
                   aria-expanded={selected?.key === key}
                   onMouseEnter={() => setHovered(key)}
                   onMouseLeave={() => setHovered(null)}
@@ -208,13 +236,14 @@ export function Sankey({ flow }: { flow: Flow }) {
                   y={y0}
                   width={x1 - x0}
                   height={Math.max(2, y1 - y0)}
-                  className={`${KIND[node.id].fill} cursor-pointer outline-none ${
+                  className={`${KIND[node.id].fill} cursor-pointer outline-none ${FOCUS_RING} ${
                     active === key ? "stroke-slate-100" : "stroke-black/70"
                   }`}
                   strokeWidth={1.5}
                   tabIndex={0}
                   role="button"
                   aria-label={`${node.label}: ${node.value} ${node.value === 1 ? "application" : "applications"}`}
+                  aria-haspopup="dialog"
                   aria-expanded={selected?.key === key}
                   onMouseEnter={() => setHovered(key)}
                   onMouseLeave={() => setHovered(null)}
@@ -245,10 +274,7 @@ export function Sankey({ flow }: { flow: Flow }) {
         <FlowPopover
           selection={selected}
           applications={selected.ids.flatMap((id) => byId.get(id) ?? [])}
-          onClose={(refocus) => {
-            if (refocus && selected.trigger.isConnected) selected.trigger.focus();
-            setSelected(null);
-          }}
+          onClose={close}
         />
       )}
 
@@ -291,9 +317,26 @@ function FlowPopover({
   const panel = useRef<HTMLDivElement>(null);
   const openDrawer = useUi((state) => state.openDrawer);
 
+  const [top, setTop] = useState(selection.anchorY + POPOVER_GAP);
+
   useEffect(() => {
     panel.current?.querySelector<HTMLElement>("[data-listing]")?.focus();
   }, [selection.key]);
+
+  // Below the click if it fits in the chart, else above, else as low as it can go
+  // without spilling out of the bottom.
+  useLayoutEffect(() => {
+    const element = panel.current;
+    const bounds = element?.offsetParent;
+    if (!element || !bounds) return;
+    const height = element.offsetHeight;
+    const room = bounds.clientHeight;
+    const below = selection.anchorY + POPOVER_GAP;
+    const above = selection.anchorY - POPOVER_GAP - height;
+    if (below + height <= room) setTop(below);
+    else if (above >= 0) setTop(above);
+    else setTop(Math.max(0, room - height));
+  }, [selection.anchorY, selection.key]);
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -320,9 +363,10 @@ function FlowPopover({
     <div
       ref={panel}
       role="dialog"
+      data-flow-popover
       aria-label={`${selection.title}: ${count} ${count === 1 ? "listing" : "listings"}`}
-      className="mc-panel absolute z-30 w-72 animate-fade-in bg-surface-raised shadow-xl"
-      style={{ left: selection.x, top: selection.y }}
+      className="mc-panel absolute z-30 w-72 max-w-full animate-fade-in bg-surface-raised shadow-xl"
+      style={{ left: selection.x, top }}
     >
       <header className="flex items-baseline justify-between gap-2 border-b-2 border-black/60 px-3 py-2">
         <h3 className="mc-shadow text-sm text-slate-100">

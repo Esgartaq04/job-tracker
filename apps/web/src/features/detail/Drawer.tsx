@@ -29,6 +29,9 @@ export function Drawer() {
   const [note, setNote] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<Element | null>(null);
+  // Where focus goes if the opener is gone by the time the drawer closes — say, a Sankey
+  // branch that an edit in here emptied out.
+  const fallbackRef = useRef<Element | null>(null);
 
   const { data: application, isLoading } = useApplication(drawerId);
   const update = useUpdateApplication(drawerId ?? "");
@@ -39,6 +42,7 @@ export function Drawer() {
   useEffect(() => {
     if (!drawerId) return;
     openerRef.current = document.activeElement;
+    fallbackRef.current = document.activeElement?.closest("[data-focus-fallback]") ?? null;
     setTab("overview");
     panelRef.current?.focus();
 
@@ -48,7 +52,8 @@ export function Drawer() {
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      (openerRef.current as HTMLElement | null)?.focus?.();
+      const opener = openerRef.current?.isConnected ? openerRef.current : fallbackRef.current;
+      (opener as HTMLElement | null)?.focus?.();
     };
   }, [drawerId, closeDrawer]);
 

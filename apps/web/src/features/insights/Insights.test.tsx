@@ -125,6 +125,42 @@ describe("Insights", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("opens above the click when there's no room below", async () => {
+    // jsdom has no layout: give the popover a height and the chart a fixed room.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(200);
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.parentElement;
+      },
+    );
+    vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(370);
+    try {
+      renderInsights();
+      await screen.findByText("Total applied");
+      const branch = screen.getByRole("button", { name: "Applied → Rejected: 1 application" });
+      expect(branch).toHaveAttribute("aria-haspopup", "dialog");
+
+      fireEvent.click(branch, { clientX: 10, clientY: 300 });
+      // 300 + 10 + 200 overflows 370, so it sits 10px above the click instead.
+      expect(screen.getByRole("dialog")).toHaveStyle({ top: "90px" });
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("closes when the chart scrolls out from under it, handing focus back", async () => {
+    renderInsights();
+    await screen.findByText("Total applied");
+    const branch = screen.getByRole("button", { name: "Applied → Rejected: 1 application" });
+    fireEvent.click(branch);
+    const listing = within(screen.getByRole("dialog")).getByRole("button", { name: /datadog/i });
+    expect(listing).toHaveFocus();
+
+    fireEvent.scroll(branch.closest(".overflow-x-auto")!);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(branch).toHaveFocus();
+  });
+
   it("fills the XP bar towards the weekly goal", async () => {
     renderInsights();
     const bar = await screen.findByRole("progressbar", { name: /applications this week/i });
