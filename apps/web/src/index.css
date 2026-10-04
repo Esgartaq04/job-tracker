@@ -104,14 +104,19 @@
   :root {
     color-scheme: dark;
     --font-clean: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --font-pixel: "Pixelify Sans", var(--font-clean);
+    --font-pixel: "Tiny5", var(--font-clean);
     --font-body: var(--font-clean);
+    --font-numeric: var(--font-clean);
   }
 
-  /* The pixel face reads small, so it gets a slightly larger root size. */
+  /* The pixel face reads small, so it gets a slightly larger root size. It has one
+     weight; a synthesised bold smears the pixels, so headings lean on size instead. */
   :root[data-font="pixel"] {
     --font-body: var(--font-pixel);
+    /* Tiny5's open 4 reads as a "d" at display sizes; Silkscreen's digits don't. */
+    --font-numeric: "Silkscreen", var(--font-pixel);
     font-size: 17px;
+    font-synthesis-weight: none;
   }
 
   body {
