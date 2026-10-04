@@ -62,7 +62,7 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
               </button>
               <button
                 type="button"
-                className="font-medium text-accent hover:text-indigo-300"
+                className="font-medium text-accent-ink hover:text-slate-100"
                 onClick={() => {
                   update.mutate({ description_user: draft });
                   setEditing(false);
@@ -124,11 +124,11 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={16}
-          className="w-full rounded-md border border-surface-border bg-surface-raised p-3 font-mono text-xs text-slate-200 focus:border-accent focus:outline-none"
+          className="w-full mc-slot p-3 font-mono text-xs text-slate-200 focus:border-accent focus:outline-none"
           placeholder="Paste the description yourself…"
         />
       ) : shown ? (
-        <div className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-surface-border bg-surface-raised p-3 text-sm leading-relaxed text-slate-300">
+        <div className="max-h-96 overflow-y-auto whitespace-pre-wrap mc-slot p-3 text-sm leading-relaxed text-slate-300">
           {shown}
         </div>
       ) : (
@@ -137,7 +137,7 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="mt-2 text-accent hover:text-indigo-300"
+            className="mt-2 text-accent-ink hover:text-slate-100"
           >
             Paste the description yourself
           </button>

@@ -2,9 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Dimensions. Every colour token is "r g b" channels, read by tailwind.config.js as
+ * rgb(var(--token) / alpha). <html data-dimension="…"> picks the set; Overworld is
+ * also the default so nothing renders unthemed before the prefs load.
+ */
 @layer base {
+  :root,
+  :root[data-dimension="overworld"] {
+    --surface: 28 22 17;
+    --surface-raised: 44 44 44;
+    --surface-card: 58 58 58;
+    --surface-border: 90 90 90;
+    --accent: 74 132 36;
+    --accent-muted: 61 110 29;
+    --accent-ink: 134 201 90;
+    --on-accent: 255 255 255;
+    --warn: 255 210 63;
+    --dim: 138 138 138;
+    --ink-100: 244 244 244;
+    --ink-200: 226 226 226;
+    --ink-300: 200 200 200;
+    --ink-400: 168 168 168;
+    --ink-500: 138 138 138;
+    --ink-600: 106 106 106;
+    --ink-900: 20 20 20;
+    --chart-stage: 90 154 46;
+    --chart-offer: 47 160 184;
+    --chart-reject: 208 69 58;
+    --chart-neutral: 140 140 140;
+    --block-0: 58 58 58;
+    --block-1: 63 107 37;
+    --block-2: 90 154 46;
+    --block-3: 134 201 90;
+    --block-4: 180 230 138;
+    --texture: url("/textures/dirt.png");
+    --veil: 0.82;
+  }
+
+  :root[data-dimension="nether"] {
+    --surface: 22 7 7;
+    --surface-raised: 42 18 18;
+    --surface-card: 58 25 25;
+    --surface-border: 94 42 42;
+    --accent: 208 96 26;
+    --accent-muted: 224 120 46;
+    --accent-ink: 240 146 74;
+    --on-accent: 27 11 6;
+    --warn: 255 211 77;
+    --dim: 149 120 104;
+    --ink-100: 248 236 228;
+    --ink-200: 236 217 204;
+    --ink-300: 214 188 172;
+    --ink-400: 184 154 136;
+    --ink-500: 149 120 104;
+    --ink-600: 110 84 72;
+    --ink-900: 22 7 7;
+    --chart-stage: 208 96 26;
+    --chart-offer: 47 160 184;
+    --chart-reject: 184 64 122;
+    --chart-neutral: 154 138 132;
+    --block-0: 58 25 25;
+    --block-1: 148 64 26;
+    --block-2: 191 90 24;
+    --block-3: 232 130 44;
+    --block-4: 255 184 102;
+    --texture: url("/textures/netherrack.png");
+    --veil: 0.8;
+  }
+
+  :root[data-dimension="end"] {
+    --surface: 12 9 18;
+    --surface-raised: 23 18 31;
+    --surface-card: 34 26 46;
+    --surface-border: 62 47 85;
+    --accent: 138 82 181;
+    --accent-muted: 116 64 156;
+    --accent-ink: 196 154 240;
+    --on-accent: 255 255 255;
+    --warn: 242 193 78;
+    --dim: 138 134 104;
+    --ink-100: 244 242 216;
+    --ink-200: 230 227 189;
+    --ink-300: 208 204 159;
+    --ink-400: 174 170 132;
+    --ink-500: 138 134 104;
+    --ink-600: 102 99 77;
+    --ink-900: 12 9 18;
+    --chart-stage: 168 107 209;
+    --chart-offer: 47 168 138;
+    --chart-reject: 208 69 58;
+    --chart-neutral: 154 149 128;
+    --block-0: 34 26 46;
+    --block-1: 95 61 143;
+    --block-2: 124 79 184;
+    --block-3: 162 106 216;
+    --block-4: 207 162 244;
+    --texture: url("/textures/end_stone.png");
+    --veil: 0.9;
+  }
   :root {
     color-scheme: dark;
+    --font-clean: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-pixel: "Tiny5", var(--font-clean);
+    --font-body: var(--font-clean);
+    --font-numeric: var(--font-clean);
+  }
+
+  /* The pixel face reads small, so it gets a slightly larger root size. It has one
+     weight; a synthesised bold smears the pixels, so headings lean on size instead. */
+  :root[data-font="pixel"] {
+    --font-body: var(--font-pixel);
+    /* Tiny5's open 4 reads as a "d" at display sizes; Silkscreen's digits don't. */
+    --font-numeric: "Silkscreen", var(--font-pixel);
+    font-size: 17px;
+    font-synthesis-weight: none;
   }
 
   body {
@@ -13,7 +125,79 @@
 
   /* Status is never carried by colour alone, but focus always needs to be visible. */
   :focus-visible {
-    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-surface;
+    @apply outline-none ring-2 ring-accent-ink ring-offset-2 ring-offset-surface;
+  }
+}
+
+@layer components {
+  /* The dimension's block texture behind a veil of its surface colour. It sits on a
+     pseudo-element because image-rendering is inherited: on the element itself it
+     would pixelate every image inside. */
+  .mc-world {
+    position: relative;
+    isolation: isolate;
+    background-color: rgb(var(--surface));
+  }
+  .mc-world::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgb(var(--surface) / var(--veil)), rgb(var(--surface) / var(--veil))),
+      var(--texture);
+    background-size: auto, 64px 64px;
+    image-rendering: pixelated;
+  }
+
+  /* Inventory window: a black outline with a light top-left and dark bottom-right bevel. */
+  .mc-panel {
+    background-color: rgb(var(--surface-raised) / 0.94);
+    border: 2px solid rgb(0 0 0 / 0.8);
+    box-shadow:
+      inset 2px 2px 0 rgb(255 255 255 / 0.1),
+      inset -2px -2px 0 rgb(0 0 0 / 0.35);
+  }
+
+  /* Inventory slot: the bevel inverted, for inputs and wells. */
+  .mc-slot {
+    background-color: rgb(var(--surface) / 0.85);
+    border: 2px solid;
+    border-color: rgb(0 0 0 / 0.65) rgb(255 255 255 / 0.14) rgb(255 255 255 / 0.14)
+      rgb(0 0 0 / 0.65);
+  }
+
+  /* Stone button: white outline on hover, pushed in while pressed. */
+  .mc-button {
+    background-color: rgb(var(--surface-card));
+    color: rgb(var(--ink-100));
+    border: 2px solid #000;
+    box-shadow:
+      inset 2px 2px 0 rgb(255 255 255 / 0.22),
+      inset -2px -3px 0 rgb(0 0 0 / 0.4);
+    text-shadow: 1px 1px 0 rgb(0 0 0 / 0.5);
+    transition: border-color 80ms;
+  }
+  .mc-button:hover:not(:disabled) {
+    border-color: rgb(var(--ink-100));
+  }
+  .mc-button:active:not(:disabled) {
+    box-shadow:
+      inset 2px 3px 0 rgb(0 0 0 / 0.4),
+      inset -2px -2px 0 rgb(255 255 255 / 0.1);
+    transform: translateY(1px);
+  }
+  .mc-button-accent {
+    background-color: rgb(var(--accent));
+    color: rgb(var(--on-accent));
+  }
+  .mc-button-accent:hover:not(:disabled) {
+    background-color: rgb(var(--accent-muted));
+  }
+
+  .mc-shadow {
+    text-shadow: 2px 2px 0 rgb(0 0 0 / 0.5);
   }
 }
 
@@ -23,5 +207,16 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  .pixelated {
+    image-rendering: pixelated;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-blink,
+  .animate-splash {
+    animation: none;
   }
 }

@@ -68,9 +68,9 @@ export function Card({ application, overlay = false }: CardProps) {
       }}
       aria-label={`${application.title ?? "Untitled"} at ${application.company ?? "unknown company"}, ${STATUS_LABELS[application.status]}. Alt+arrow keys move it between columns.`}
       className={[
-        "group cursor-pointer rounded-lg border bg-surface-card px-3 py-2.5 text-left shadow-sm",
-        "transition hover:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent",
-        overlay ? "rotate-1 shadow-2xl ring-2 ring-accent" : "",
+        "group cursor-pointer border-2 bg-surface-card px-3 py-2.5 text-left shadow-[inset_2px_2px_0_rgb(255_255_255/0.08),inset_-2px_-2px_0_rgb(0_0_0/0.3)]",
+        "transition hover:border-slate-100 focus:outline-none focus:ring-2 focus:ring-accent-ink",
+        overlay ? "rotate-1 shadow-2xl ring-2 ring-accent-ink" : "",
         isDragging ? "opacity-40" : "",
         stale === "dim" ? "border-surface-border opacity-60" : "border-surface-border",
         failed ? "border-stale-warn/70" : "",
@@ -128,7 +128,7 @@ export function Card({ application, overlay = false }: CardProps) {
           ⏱ {ageLabel(application)}
           {stale === "warn" ? " ⚠" : ""}
         </span>
-        {salary && <span className="text-emerald-300/80">{salary}</span>}
+        {salary && <span className="text-accent-ink">{salary}</span>}
       </div>
 
       {(application.tags.length > 0 || failed) && (

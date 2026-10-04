@@ -344,6 +344,74 @@ def test_velocity_buckets_by_week(auth_client: TestClient):
     assert velocity["stale_count"] == 0
 
 
+def test_flow_follows_each_application_from_applied(auth_client: TestClient):
+    offer = create(auth_client, title="A")
+    rejected = create(auth_client, title="B")
+    waiting = create(auth_client, title="C")
+    create(auth_client, title="D")  # saved, never applied — not part of the flow
+
+    for application, path in (
+        (offer, ("applied", "interview", "offer")),
+        (rejected, ("applied", "rejected")),
+        (waiting, ("applied",)),
+    ):
+        for status_ in path:
+            auth_client.patch(
+                f"{API}/applications/{application['id']}/move", json={"to_status": status_}
+            )
+
+    flow = auth_client.get(f"{API}/stats/flow").json()
+    links = {(link["source"], link["target"]): link["value"] for link in flow["links"]}
+    nodes = {node["id"]: node["value"] for node in flow["nodes"]}
+    assert flow["total_applied"] == 3
+    assert links == {
+        ("applied", "interview"): 1,
+        ("interview", "offer"): 1,
+        ("applied", "rejected"): 1,
+        ("applied", "no_reply"): 1,
+    }
+    assert nodes["applied"] == 3
+    assert "saved" not in nodes
+
+
+def test_flow_ignores_backward_moves_and_counts_skipped_columns(auth_client: TestClient):
+    application = create(auth_client)
+    # Dragged back from interview, then ghosted — and never sat in the Applied column.
+    for status_ in ("interview", "phone_screen", "ghosted"):
+        auth_client.patch(
+            f"{API}/applications/{application['id']}/move", json={"to_status": status_}
+        )
+
+    flow = auth_client.get(f"{API}/stats/flow").json()
+    links = [(link["source"], link["target"]) for link in flow["links"]]
+    assert flow["total_applied"] == 1
+    assert links == [
+        ("applied", "phone_screen"),
+        ("phone_screen", "interview"),
+        ("interview", "ghosted"),
+    ]
+
+
+def test_activity_counts_today_in_the_callers_time_zone(auth_client: TestClient):
+    application = create(auth_client)
+    auth_client.patch(f"{API}/applications/{application['id']}/move", json={"to_status": "applied"})
+
+    activity = auth_client.get(
+        f"{API}/stats/activity", params={"days": 14, "tz": "America/New_York"}
+    ).json()
+    assert len(activity["days"]) == 14
+    assert activity["days"][-1]["count"] == 1
+    assert activity["current_streak"] == 1
+    assert activity["longest_streak"] == 1
+    assert activity["this_week"] == 1
+
+
+def test_activity_falls_back_to_utc_for_an_unknown_zone(auth_client: TestClient):
+    response = auth_client.get(f"{API}/stats/activity", params={"tz": "Not/AZone"})
+    assert response.status_code == 200
+    assert len(response.json()["days"]) == 182
+
+
 def test_extension_hints_fill_gaps_the_tiers_left(auth_client: TestClient):
     """LinkedIn markup defeats the readability pass, so the extension also sends what
     it could read off the rendered page. Hints fill blanks; they never overwrite."""

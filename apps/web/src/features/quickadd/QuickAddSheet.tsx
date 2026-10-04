@@ -64,7 +64,7 @@ export function QuickAddSheet() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Add a job posting"
-        className="fixed bottom-5 right-5 z-30 h-14 w-14 rounded-full bg-accent text-2xl text-white shadow-lg transition active:scale-95 md:hidden"
+        className="mc-button mc-button-accent fixed bottom-5 right-5 z-30 h-14 w-14 text-2xl shadow-lg active:scale-95 md:hidden"
       >
         +
       </button>
@@ -77,7 +77,7 @@ export function QuickAddSheet() {
             className="absolute inset-0 bg-black/60"
             onClick={() => setOpen(false)}
           />
-          <div className="relative w-full animate-fade-in rounded-t-2xl border-t border-surface-border bg-surface-raised p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="relative w-full animate-fade-in mc-panel p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <h2 className="mb-3 text-sm font-medium text-slate-200">Track a posting</h2>
 
             <input
@@ -88,7 +88,7 @@ export function QuickAddSheet() {
               inputMode="url"
               placeholder="Paste a job URL…"
               aria-label="Job posting URL"
-              className="w-full rounded-md border border-surface-border bg-surface-card px-3 py-3 text-base text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none"
+              className="w-full mc-slot px-3 py-3 text-base text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none"
             />
 
             <label className="mt-3 flex items-center gap-2 text-sm text-slate-400">
@@ -105,7 +105,7 @@ export function QuickAddSheet() {
               type="button"
               onClick={submit}
               disabled={ingest.isPending}
-              className="mt-4 w-full rounded-md bg-accent py-3 text-sm font-medium text-white disabled:opacity-50"
+              className="mc-button mc-button-accent mt-4 w-full py-3 text-sm font-medium disabled:opacity-50"
             >
               {ingest.isPending ? "Adding…" : "Add to board"}
             </button>

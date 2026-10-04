@@ -12,11 +12,12 @@ import { QuickAdd } from "./features/quickadd/QuickAdd";
 import { QuickAddSheet } from "./features/quickadd/QuickAddSheet";
 import { NeedsAttention } from "./features/reminders/NeedsAttention";
 import { TableView } from "./features/table/TableView";
-import { TimelineView } from "./features/timeline/TimelineView";
+import { DimensionSwitcher } from "./features/theme/DimensionSwitcher";
+import { applyPrefs, usePrefs } from "./lib/prefs";
 import { useUi, type ViewName } from "./lib/store";
 import { MOBILE_QUERY, useMediaQuery } from "./lib/useMediaQuery";
 
-const VIEWS: ViewName[] = ["board", "table", "timeline", "insights"];
+const VIEWS: ViewName[] = ["board", "table", "insights"];
 
 export function App() {
   const [signedIn, setSignedIn] = useState(() => Boolean(getToken()));
@@ -27,8 +28,12 @@ export function App() {
   const toast = useUi((state) => state.toast);
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const dismissToast = useUi((state) => state.dismissToast);
+  const dimension = usePrefs((state) => state.dimension);
+  const pixelFont = usePrefs((state) => state.pixelFont);
 
   useServerEvents(signedIn);
+
+  useEffect(() => applyPrefs(dimension, pixelFont), [dimension, pixelFont]);
 
   useEffect(() => {
     const onSignedOut = () => setSignedIn(false);
@@ -45,9 +50,9 @@ export function App() {
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
 
   return (
-    <div className="flex h-full flex-col bg-surface text-slate-100">
-      <header className="flex items-center gap-3 border-b border-surface-border px-4 py-2.5">
-        <span className="text-sm font-semibold text-slate-200">⬢ Tracker</span>
+    <div className="mc-world flex h-full flex-col text-slate-100">
+      <header className="flex items-center gap-3 border-b-2 border-black/80 bg-surface-raised/90 px-4 py-2.5">
+        <span className="mc-shadow whitespace-nowrap text-sm font-bold text-slate-100">⛏ Tracker</span>
         {/* The persistent URL bar is a desktop affordance; on mobile it's the FAB. */}
         <div className="hidden flex-1 md:flex">
           <QuickAdd />
@@ -58,22 +63,23 @@ export function App() {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search…"
           aria-label="Search applications"
-          className="hidden w-40 rounded-md border border-surface-border bg-surface-card px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none md:block"
+          className="mc-slot hidden w-40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none md:block"
         />
+        <DimensionSwitcher />
         <AccountMenu onSignOut={() => setSignedIn(false)} />
       </header>
 
-      <nav className="flex gap-1 border-b border-surface-border px-4">
+      <nav className="flex gap-1 border-b-2 border-black/80 bg-surface/70 px-4 pt-2">
         {VIEWS.map((name) => (
           <button
             key={name}
             type="button"
             onClick={() => setView(name)}
             className={[
-              "px-3 py-2 text-sm capitalize transition",
+              "mc-button -mb-0.5 border-b-0 px-3 py-1.5 text-sm capitalize",
               view === name
-                ? "border-b-2 border-accent text-slate-100"
-                : "text-slate-400 hover:text-slate-200",
+                ? "bg-surface-raised text-slate-100"
+                : "bg-surface-card/70 text-slate-400 hover:text-slate-200",
             ].join(" ")}
           >
             {name}
@@ -86,7 +92,6 @@ export function App() {
       <main className="min-h-0 flex-1">
         {view === "board" && (isMobile ? <MobileBoard /> : <Board />)}
         {view === "table" && <TableView />}
-        {view === "timeline" && <TimelineView />}
         {view === "insights" && <Insights />}
       </main>
 
@@ -98,10 +103,8 @@ export function App() {
           role="status"
           aria-live="polite"
           className={[
-            "fixed bottom-4 left-1/2 z-50 -translate-x-1/2 animate-fade-in rounded-md px-4 py-2 text-sm shadow-lg",
-            toast.tone === "error"
-              ? "bg-stale-warn/90 text-slate-900"
-              : "bg-surface-card text-slate-100 ring-1 ring-surface-border",
+            "mc-panel fixed bottom-4 left-1/2 z-50 -translate-x-1/2 animate-fade-in px-4 py-2 text-sm shadow-lg",
+            toast.tone === "error" ? "bg-stale-warn text-slate-900" : "text-slate-100",
           ].join(" ")}
         >
           {toast.message}

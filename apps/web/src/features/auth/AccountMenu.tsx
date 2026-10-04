@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { getToken, setToken } from "../../api/client";
+import { usePrefs } from "../../lib/prefs";
 import { useUi } from "../../lib/store";
 import { enableDesktopNotifications } from "../reminders/NeedsAttention";
 
@@ -12,6 +13,8 @@ import { enableDesktopNotifications } from "../reminders/NeedsAttention";
 export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
   const [open, setOpen] = useState(false);
   const notify = useUi((state) => state.notify);
+  const pixelFont = usePrefs((state) => state.pixelFont);
+  const togglePixelFont = usePrefs((state) => state.togglePixelFont);
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,7 +54,7 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Account"
-        className="rounded-md px-2 py-2 text-sm text-slate-400 transition hover:text-slate-100"
+        className="mc-button px-2 py-1 text-sm"
       >
         👤
       </button>
@@ -59,7 +62,7 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-50 mt-1 w-56 animate-fade-in rounded-md border border-surface-border bg-surface-card py-1 shadow-xl"
+          className="mc-panel absolute right-0 z-50 mt-1 w-56 animate-fade-in py-1 shadow-xl"
         >
           <button
             type="button"
@@ -90,6 +93,18 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
             Enable notifications
             <span className="block text-[11px] text-slate-500">
               A daily nudge about overdue follow-ups
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={pixelFont}
+            onClick={togglePixelFont}
+            className="block w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-surface-border/60"
+          >
+            Pixel font: {pixelFont ? "On" : "Off"}
+            <span className="block text-[11px] text-slate-500">
+              {pixelFont ? "Switch to a plain, denser font" : "Switch back to the blocky font"}
             </span>
           </button>
           <button

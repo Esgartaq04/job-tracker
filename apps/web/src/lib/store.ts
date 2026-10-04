@@ -3,7 +3,7 @@ import { create } from "zustand";
 import type { AppStatus } from "../api/types";
 import { TERMINAL_STATUSES } from "../api/types";
 
-export type ViewName = "board" | "table" | "timeline" | "insights";
+export type ViewName = "board" | "table" | "insights";
 
 interface UiState {
   view: ViewName;

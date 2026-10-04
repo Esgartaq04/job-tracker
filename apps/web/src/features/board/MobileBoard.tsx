@@ -52,10 +52,10 @@ export function MobileBoard() {
             aria-selected={entry === status}
             onClick={() => setStatus(entry)}
             className={[
-              "shrink-0 rounded-full px-3 py-1.5 text-xs transition",
+              "mc-button shrink-0 px-3 py-1 text-xs",
               entry === status
-                ? "bg-accent text-white"
-                : "bg-surface-card text-slate-400 hover:text-slate-200",
+                ? "mc-button-accent"
+                : "text-slate-400 hover:text-slate-200",
             ].join(" ")}
           >
             {STATUS_LABELS[entry]}
@@ -68,7 +68,7 @@ export function MobileBoard() {
         {(column?.items ?? []).map((application) => (
           <li
             key={application.id}
-            className="rounded-lg border border-surface-border bg-surface-card p-3"
+            className="mc-panel bg-surface-card p-3"
           >
             <button
               type="button"
@@ -114,7 +114,7 @@ export function MobileBoard() {
                   );
                 }}
                 aria-label={`Status of ${application.title ?? "this application"}`}
-                className="flex-1 rounded-md border border-surface-border bg-surface-raised px-2 py-1.5 text-xs text-slate-300"
+                className="flex-1 mc-slot px-2 py-1.5 text-xs text-slate-300"
               >
                 {STATUSES.map((entry) => (
                   <option key={entry} value={entry}>
