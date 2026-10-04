@@ -324,7 +324,9 @@ POST   /api/v1/applications/{id}/notes
 POST   /api/v1/applications/{id}/documents
 
 GET    /api/v1/stats/funnel            ?from=&to=
-GET    /api/v1/stats/velocity          # apps/week, time-in-stage
+GET    /api/v1/stats/velocity          # apps/week, stale count
+GET    /api/v1/stats/flow              # Sankey: Applied → stages → outcome
+GET    /api/v1/stats/activity          ?days=&tz=     # per-day counts, streaks, this week
 GET    /api/v1/search                  ?q=            # full-text
 
 GET    /api/v1/events                  # SSE: ingest progress, email-derived updates
@@ -344,7 +346,7 @@ GET    /api/v1/events                  # SSE: ingest progress, email-derived upd
 ┌────────────────────────────────────────────────────────────────────────────┐
 │  ⬢ Tracker    [ 🔗 Paste a job URL…              ] [+]   🔍  ⚙  👤          │
 ├────────────────────────────────────────────────────────────────────────────┤
-│  Board │ Table │ Timeline │ Insights        Filters: [Internship ×] [2026 ×]│
+│  Board │ Table │ Insights                   Filters: [Internship ×] [2026 ×]│
 ├────────────────────────────────────────────────────────────────────────────┤
 │                                                                            │
 │  SAVED (12)     APPLIED (34)    OA (6)        INTERVIEW (3)   OFFER (1)     │
@@ -420,8 +422,17 @@ Right-hand slide-over at ~640px (full-screen on mobile), opened by clicking a ca
 ### 7.4 Secondary views
 
 - **Table** — dense sortable grid, bulk edit, CSV export. Better than a board for "show me every application from March."
-- **Timeline** — Gantt-ish horizontal lanes showing each application's stage durations. Makes ghosting patterns obvious.
-- **Insights** — funnel conversion, applications per week, response rate by source/ATS, median time-to-first-response, outcome by resume version.
+- **Insights** — the total applied up front, with response rate, median days to first reply and the daily streak. Below that:
+  - a **Sankey diagram** following every sent application from Applied through the stages it reached (OA → Phone screen → Interview → Final → Offer) to its outcome (Rejected, Ghosted, Withdrawn, or still waiting on a reply);
+  - a **weekly goal** shown as a Minecraft XP bar (the goal is set per device);
+  - applications per week;
+  - an **activity heatmap** of the last six months, one block per day, bucketed in the browser's time zone.
+
+  Time in stage and response rate by source were dropped as not worth the space.
+
+### 7.4a Look and feel
+
+The UI is styled after Minecraft: square corners, bevelled inventory-style panels and stone buttons, and a block texture behind everything. A switcher in the header picks the **dimension** — Overworld (dirt and grass), Nether (netherrack and lava) or The End (end stone and purpur). Every colour is a CSS variable set per dimension in `apps/web/src/index.css`, so components only use Tailwind tokens (`surface`, `accent`, `slate-*` ink, `chart-*`, `block-*`). A pixel font is on by default and can be switched off from the account menu. Both choices are saved per device and applied before first paint. Signing in starts at a game-style title screen with a PRESS START button.
 
 ### 7.5 Responsive behavior
 
@@ -648,7 +659,8 @@ job-tracker/
 │   │       │   ├── board/         # Board, Column, Card, DragContext
 │   │       │   ├── detail/        # Drawer, DescriptionEditor, Timeline
 │   │       │   ├── quickadd/
-│   │       │   └── insights/
+│   │       │   ├── theme/         # DimensionSwitcher
+│   │       │   └── insights/      # Sankey, XP bar, activity heatmap
 │   │       ├── api/               # generated client + TanStack hooks
 │   │       └── lib/
 │   └── extension/                 # Phase 3 — MV3

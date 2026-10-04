@@ -7,16 +7,17 @@ import {
 
 import { API_BASE, ApiError, api, getToken } from "./client";
 import type {
+  Activity,
   Application,
   ApplicationDetail,
   AppStatus,
   Board,
   CoverLetter,
+  Flow,
   Funnel,
   ImportReport,
   IngestAccepted,
   Reminders,
-  SourceBreakdown,
   Tag,
   Velocity,
 } from "./types";
@@ -28,7 +29,8 @@ export const queryKeys = {
   tags: ["tags"] as const,
   funnel: ["stats", "funnel"] as const,
   velocity: ["stats", "velocity"] as const,
-  sources: ["stats", "sources"] as const,
+  flow: ["stats", "flow"] as const,
+  activity: ["stats", "activity"] as const,
   reminders: ["reminders"] as const,
   search: (q: string) => ["search", q] as const,
 };
@@ -72,10 +74,17 @@ export function useVelocity() {
   });
 }
 
-export function useSources() {
+export function useFlow() {
+  return useQuery({ queryKey: queryKeys.flow, queryFn: () => api.get<Flow>("/stats/flow") });
+}
+
+/** Days are bucketed in the browser's time zone, so "today" and streaks match the user's. */
+export function useActivity() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return useQuery({
-    queryKey: queryKeys.sources,
-    queryFn: () => api.get<SourceBreakdown[]>("/stats/sources"),
+    queryKey: [...queryKeys.activity, tz],
+    queryFn: () =>
+      api.get<Activity>(`/stats/activity?days=182${tz ? `&tz=${encodeURIComponent(tz)}` : ""}`),
   });
 }
 

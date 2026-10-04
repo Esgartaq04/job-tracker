@@ -125,15 +125,28 @@ export interface Funnel {
 
 export interface Velocity {
   weekly: { week_start: string; saved: number; applied: number }[];
-  time_in_stage: { status: AppStatus; median_days: number | null; open_count: number }[];
   stale_count: number;
 }
 
-export interface SourceBreakdown {
-  ats_vendor: string;
-  total: number;
-  responded: number;
-  response_rate: number;
+/** A Sankey node: an `AppStatus`, or `no_reply` for applications still waiting. */
+export interface FlowNode {
+  id: AppStatus | "no_reply";
+  label: string;
+  value: number;
+}
+
+export interface Flow {
+  total_applied: number;
+  nodes: FlowNode[];
+  links: { source: FlowNode["id"]; target: FlowNode["id"]; value: number }[];
+}
+
+export interface Activity {
+  /** Oldest first, one entry per local calendar day, ending today. */
+  days: { date: string; count: number }[];
+  current_streak: number;
+  longest_streak: number;
+  this_week: number;
 }
 
 export interface IngestAccepted {
