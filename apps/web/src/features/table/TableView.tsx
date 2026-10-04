@@ -78,14 +78,14 @@ export function TableView() {
             type="button"
             onClick={() => fileInput.current?.click()}
             disabled={importCsv.isPending}
-            className="rounded-md border border-surface-border px-3 py-1.5 text-sm text-slate-300 hover:border-accent hover:text-slate-100 disabled:opacity-50"
+            className="mc-button px-3 py-1.5 text-sm text-slate-300 disabled:opacity-50"
           >
             {importCsv.isPending ? "Importing…" : "Import CSV"}
           </button>
           <button
             type="button"
             onClick={exportCsv}
-            className="rounded-md border border-surface-border px-3 py-1.5 text-sm text-slate-300 hover:border-accent hover:text-slate-100"
+            className="mc-button px-3 py-1.5 text-sm text-slate-300"
           >
             Export CSV
           </button>
@@ -93,7 +93,7 @@ export function TableView() {
       </div>
 
       {report && (
-        <div className="mb-3 rounded-md border border-surface-border bg-surface-raised/60 p-3 text-sm">
+        <div className="mb-3 mc-slot p-3 text-sm">
           <div className="flex items-start justify-between gap-3">
             <p className="text-slate-200">{report.summary}</p>
             <button
@@ -126,7 +126,7 @@ export function TableView() {
         </div>
       )}
 
-      <div className="flex-1 overflow-auto rounded-lg border border-surface-border">
+      <div className="mc-panel flex-1 overflow-auto">
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 bg-surface-raised text-xs uppercase tracking-wide text-slate-400">
             <tr>

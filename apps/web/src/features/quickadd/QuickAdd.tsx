@@ -80,7 +80,7 @@ export function QuickAdd() {
           }}
           placeholder="Paste a job URL…   (press / to focus)"
           aria-label="Paste a job posting URL"
-          className="w-full rounded-md border border-surface-border bg-surface-card py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          className="w-full mc-slot py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
 
@@ -98,7 +98,7 @@ export function QuickAdd() {
         type="button"
         onClick={submit}
         disabled={ingest.isPending}
-        className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-white transition hover:bg-accent-muted disabled:opacity-50"
+        className="mc-button mc-button-accent px-3 py-2 text-sm font-medium disabled:opacity-50"
       >
         {ingest.isPending ? "Adding…" : "+"}
       </button>

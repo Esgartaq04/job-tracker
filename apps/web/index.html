@@ -1,15 +1,33 @@
 <!doctype html>
-<html lang="en" class="h-full">
+<html lang="en" class="h-full" data-dimension="overworld" data-font="pixel">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b1120" />
+    <meta name="theme-color" content="#1c1611" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Tracker</title>
+    <script>
+      // Apply the saved dimension and font before first paint, so a Nether player
+      // never sees a flash of Overworld. Mirrors applyPrefs() in src/lib/prefs.ts.
+      (function () {
+        try {
+          var state = JSON.parse(localStorage.getItem("job-tracker:prefs") || "{}").state || {};
+          var colors = { overworld: "#1c1611", nether: "#160707", end: "#0c0912" };
+          var root = document.documentElement;
+          if (colors[state.dimension]) {
+            root.dataset.dimension = state.dimension;
+            document.querySelector('meta[name="theme-color"]').content = colors[state.dimension];
+          }
+          if (state.pixelFont === false) root.dataset.font = "clean";
+        } catch (error) {
+          // No storage: the defaults on <html> stand.
+        }
+      })();
+    </script>
   </head>
   <body class="h-full">
     <div id="root" class="h-full"></div>

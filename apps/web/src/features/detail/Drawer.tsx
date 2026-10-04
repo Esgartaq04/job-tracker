@@ -66,7 +66,7 @@ export function Drawer() {
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="flex h-full w-full max-w-[640px] animate-fade-in flex-col overflow-y-auto border-l border-surface-border bg-surface outline-none"
+        className="flex h-full w-full max-w-[640px] animate-fade-in flex-col overflow-y-auto mc-panel bg-surface outline-none"
       >
         {isLoading || !application ? (
           <div className="space-y-3 p-6">
@@ -133,7 +133,7 @@ export function Drawer() {
                       },
                     )
                   }
-                  className="rounded-md border border-surface-border bg-surface-card px-2 py-1.5 text-sm text-slate-200 focus:border-accent focus:outline-none"
+                  className="mc-slot px-2 py-1.5 text-sm text-slate-200 focus:border-accent focus:outline-none"
                 >
                   {STATUSES.map((status) => (
                     <option key={status} value={status}>
@@ -147,7 +147,7 @@ export function Drawer() {
                     href={application.source_url}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="rounded-md border border-surface-border px-2 py-1.5 text-sm text-slate-300 hover:border-accent hover:text-slate-100"
+                    className="mc-button px-2 py-1.5 text-sm text-slate-300"
                   >
                     Open posting ↗
                   </a>
@@ -156,7 +156,7 @@ export function Drawer() {
                 <button
                   type="button"
                   onClick={() => reingest.mutate(application.id)}
-                  className="rounded-md border border-surface-border px-2 py-1.5 text-sm text-slate-300 hover:border-accent hover:text-slate-100"
+                  className="mc-button px-2 py-1.5 text-sm text-slate-300"
                   title="Run the extraction pipeline again"
                 >
                   Re-extract
@@ -175,17 +175,17 @@ export function Drawer() {
               </div>
             </header>
 
-            <nav className="flex gap-1 border-b border-surface-border px-4">
+            <nav className="flex gap-1 border-b-2 border-black/80 px-4 pt-2">
               {(["overview", "description", "cover letter", "timeline"] as TabName[]).map((name) => (
                 <button
                   key={name}
                   type="button"
                   onClick={() => setTab(name)}
                   className={[
-                    "px-3 py-2 text-sm capitalize transition",
+                    "mc-button -mb-0.5 border-b-0 px-3 py-1.5 text-sm capitalize",
                     tab === name
-                      ? "border-b-2 border-accent text-slate-100"
-                      : "text-slate-400 hover:text-slate-200",
+                      ? "bg-surface-raised text-slate-100"
+                      : "bg-surface-card/70 text-slate-400 hover:text-slate-200",
                   ].join(" ")}
                 >
                   {name}
@@ -220,7 +220,7 @@ export function Drawer() {
                         })
                       }
                       placeholder="referral, summer-2027"
-                      className="w-full rounded-md border border-surface-border bg-surface-raised px-3 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none"
+                      className="w-full mc-slot px-3 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none"
                     />
                   </section>
 
@@ -229,7 +229,7 @@ export function Drawer() {
                       Notes
                     </h3>
                     {application.notes && (
-                      <pre className="mb-2 whitespace-pre-wrap rounded-md border border-surface-border bg-surface-raised p-3 text-sm text-slate-300">
+                      <pre className="mb-2 whitespace-pre-wrap mc-slot p-3 text-sm text-slate-300">
                         {application.notes}
                       </pre>
                     )}
@@ -244,7 +244,7 @@ export function Drawer() {
                           }
                         }}
                         placeholder="Referred by Andres — team is on Go"
-                        className="flex-1 rounded-md border border-surface-border bg-surface-raised px-3 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none"
+                        className="flex-1 mc-slot px-3 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none"
                       />
                       <button
                         type="button"
@@ -253,7 +253,7 @@ export function Drawer() {
                           addNote.mutate(note.trim());
                           setNote("");
                         }}
-                        className="rounded-md bg-surface-card px-3 text-sm text-slate-200 hover:bg-surface-border"
+                        className="mc-button px-3 text-sm"
                       >
                         Add
                       </button>
@@ -274,7 +274,7 @@ export function Drawer() {
                             : null,
                         })
                       }
-                      className="rounded-md border border-surface-border bg-surface-raised px-3 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none"
+                      className="mc-slot px-3 py-2 text-sm text-slate-200 focus:border-accent focus:outline-none"
                     />
                   </section>
                 </>

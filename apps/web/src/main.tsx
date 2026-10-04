@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // `next/navigation`, which isn't a dependency here.
 import { Analytics } from "@vercel/analytics/react";
 
+// Self-hosted so the pixel face works offline in the installed PWA.
+import "@fontsource/pixelify-sans/400.css";
+import "@fontsource/pixelify-sans/700.css";
+
 import { App } from "./App";
 import "./index.css";
 

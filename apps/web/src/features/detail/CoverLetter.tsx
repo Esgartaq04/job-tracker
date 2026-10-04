@@ -71,7 +71,7 @@ function NotReady({ application }: { application: ApplicationDetail }) {
         type="button"
         disabled={clean.isPending}
         onClick={() => clean.mutate(undefined, { onError: (error) => notify(error.message, "error") })}
-        className="mt-3 rounded-md border border-surface-border px-3 py-1.5 text-sm text-slate-200 hover:border-accent disabled:opacity-60"
+        className="mc-button mt-3 px-3 py-1.5 text-sm text-slate-200 disabled:opacity-60"
       >
         {clean.isPending ? "Cleaning…" : "Clean up now"}
       </button>
@@ -123,7 +123,7 @@ function ResumeForm({
           onChange={(event) => setNotes(event.target.value)}
           rows={3}
           placeholder="Referred by Ana on the payments team; available from May"
-          className="w-full rounded-md border border-surface-border bg-surface-raised p-3 text-sm text-slate-200 focus:border-accent focus:outline-none"
+          className="w-full mc-slot p-3 text-sm text-slate-200 focus:border-accent focus:outline-none"
         />
       </div>
 
@@ -137,7 +137,7 @@ function ResumeForm({
         <button
           type="submit"
           disabled={!resume || generate.isPending}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="mc-button mc-button-accent px-3 py-1.5 text-sm font-medium disabled:opacity-50"
         >
           {generate.isPending
             ? "Writing your letter…"
@@ -188,7 +188,7 @@ function LetterEditor({
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         rows={18}
-        className="w-full rounded-md border border-surface-border bg-surface-raised p-3 text-sm leading-relaxed text-slate-200 focus:border-accent focus:outline-none"
+        className="w-full mc-slot p-3 text-sm leading-relaxed text-slate-200 focus:border-accent focus:outline-none"
       />
       <div className="flex flex-wrap gap-2 text-sm">
         <button
@@ -200,7 +200,7 @@ function LetterEditor({
               onError: (error) => notify(error.message, "error"),
             })
           }
-          className="rounded-md bg-accent px-3 py-1.5 font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="mc-button mc-button-accent px-3 py-1.5 font-medium disabled:opacity-50"
         >
           {edit.isPending ? "Saving…" : "Save edits"}
         </button>
@@ -212,7 +212,7 @@ function LetterEditor({
               .then(() => notify("Copied"))
               .catch(() => notify("Couldn't copy — select the text instead", "error"))
           }
-          className="rounded-md border border-surface-border px-3 py-1.5 text-slate-200 hover:border-accent"
+          className="mc-button px-3 py-1.5 text-slate-200"
         >
           Copy
         </button>
@@ -225,7 +225,7 @@ function LetterEditor({
               .download(`/applications/${application.id}/cover-letter.docx`, fallbackName)
               .catch((error: Error) => notify(error.message, "error"))
           }
-          className="rounded-md border border-surface-border px-3 py-1.5 text-slate-200 hover:border-accent disabled:opacity-50"
+          className="mc-button px-3 py-1.5 text-slate-200 disabled:opacity-50"
         >
           Download .docx
         </button>
