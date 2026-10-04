@@ -3,9 +3,10 @@ volumes are personal-scale (hundreds of rows), and it keeps the same code path
 working on both Postgres and SQLite."""
 
 import statistics
-from collections import defaultdict
-from datetime import datetime, timedelta
+from collections import Counter, defaultdict
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Query
 from sqlalchemy import select
@@ -14,10 +15,13 @@ from src.core.deps import CurrentUser, DbSession
 from src.models import Application, AppStatus, StatusEvent
 from src.models.util import as_utc, utcnow
 from src.schemas.stats import (
+    ActivityDay,
+    ActivityOut,
+    FlowLink,
+    FlowNode,
+    FlowOut,
     FunnelOut,
     FunnelStage,
-    SourceBreakdown,
-    TimeInStage,
     VelocityBucket,
     VelocityOut,
 )
@@ -43,6 +47,28 @@ RESPONSE_STATUSES = {
     AppStatus.final,
     AppStatus.offer,
     AppStatus.rejected,
+}
+
+#: Outcomes that end a path in the flow diagram.
+TERMINAL_OUTCOMES = [AppStatus.rejected, AppStatus.ghosted, AppStatus.withdrawn]
+
+#: You can't be rejected or ghosted without having applied, even if the card skipped
+#: the Applied column on its way there.
+IMPLIES_APPLIED = set(FUNNEL_STAGES) | {AppStatus.rejected, AppStatus.ghosted}
+
+NO_REPLY = "no_reply"
+
+FLOW_LABELS = {
+    AppStatus.applied: "Applied",
+    AppStatus.oa: "OA",
+    AppStatus.phone_screen: "Phone screen",
+    AppStatus.interview: "Interview",
+    AppStatus.final: "Final",
+    AppStatus.offer: "Offer",
+    AppStatus.rejected: "Rejected",
+    AppStatus.ghosted: "Ghosted",
+    AppStatus.withdrawn: "Withdrawn",
+    NO_REPLY: "No reply yet",
 }
 
 
@@ -153,28 +179,6 @@ def velocity(
         if applied_at and applied_at >= window_start:
             buckets.setdefault(week_key(applied_at), {"saved": 0, "applied": 0})["applied"] += 1
 
-    # Time in stage: how long each application sat in a status before moving on.
-    durations: dict[AppStatus, list[float]] = defaultdict(list)
-    open_counts: dict[AppStatus, int] = defaultdict(int)
-    for application in applications:
-        history = events_by_app.get(application.id, [])
-        for current, following in zip(history, history[1:], strict=False):
-            delta = as_utc(following.occurred_at) - as_utc(current.occurred_at)
-            durations[current.to_status].append(delta.total_seconds() / 86400)
-        open_counts[application.status] += 1
-
-    time_in_stage = [
-        TimeInStage(
-            status=status_,
-            median_days=(
-                round(statistics.median(durations[status_]), 1) if durations[status_] else None
-            ),
-            open_count=open_counts.get(status_, 0),
-        )
-        for status_ in AppStatus
-        if durations[status_] or open_counts.get(status_)
-    ]
-
     stale = sum(1 for application in applications if compute_staleness(application, now) != "none")
 
     return VelocityOut(
@@ -182,37 +186,134 @@ def velocity(
             VelocityBucket(week_start=key, saved=value["saved"], applied=value["applied"])
             for key, value in sorted(buckets.items())
         ],
-        time_in_stage=time_in_stage,
         stale_count=stale,
     )
 
 
-@router.get("/sources", response_model=list[SourceBreakdown])
-def sources(user: CurrentUser, db: DbSession) -> list[SourceBreakdown]:
-    """Response rate by ATS — also the signal for "are my adapters still working?"."""
+def flow_path(seen: set[AppStatus], current: AppStatus, applied: bool) -> list[str]:
+    """The stages one application passed through, for the flow diagram.
+
+    Backward moves are ignored: a card dragged from Interview back to Phone screen
+    still counts as having reached Interview. Applications never applied to have no
+    path at all.
+    """
+    if not (applied or seen & IMPLIES_APPLIED):
+        return []
+
+    path: list[str] = [AppStatus.applied.value]
+    path += [stage.value for stage in FUNNEL_STAGES[1:] if stage in seen]
+    if current in TERMINAL_OUTCOMES:
+        path.append(current.value)
+    elif len(path) == 1:
+        path.append(NO_REPLY)
+    return path
+
+
+@router.get("/flow", response_model=FlowOut)
+def flow(user: CurrentUser, db: DbSession) -> FlowOut:
+    """Where applications went after being sent — the data behind the Sankey diagram."""
     applications, events_by_app = _load(db, user.id, None, None)
 
-    totals: dict[str, int] = defaultdict(int)
-    responded: dict[str, int] = defaultdict(int)
+    links: Counter[tuple[str, str]] = Counter()
+    total_applied = 0
     for application in applications:
-        vendor = application.ats_vendor or application.source_host or "unknown"
-        totals[vendor] += 1
         seen = {event.to_status for event in events_by_app.get(application.id, [])} | {
             application.status
         }
-        if seen & RESPONSE_STATUSES:
-            responded[vendor] += 1
+        path = flow_path(seen, application.status, application.applied_at is not None)
+        if not path:
+            continue
+        total_applied += 1
+        links.update(zip(path, path[1:], strict=False))
 
-    return sorted(
-        (
-            SourceBreakdown(
-                ats_vendor=vendor,
-                total=count,
-                responded=responded[vendor],
-                response_rate=round(responded[vendor] / count, 4) if count else 0.0,
+    # A node's size is whichever is larger of what flowed in and what flowed out. Every
+    # path has at least two steps, so `applied`'s outflow is the total.
+    inflow: Counter[str] = Counter()
+    outflow: Counter[str] = Counter()
+    for (source, target), count in links.items():
+        outflow[source] += count
+        inflow[target] += count
+    nodes = [
+        FlowNode(id=node_id, label=label, value=max(inflow[node_id], outflow[node_id]))
+        for node_id, label in FLOW_LABELS.items()
+        if inflow[node_id] or outflow[node_id]
+    ]
+
+    order = list(FLOW_LABELS)
+    return FlowOut(
+        total_applied=total_applied,
+        nodes=nodes,
+        links=[
+            FlowLink(source=source, target=target, value=count)
+            for (source, target), count in sorted(
+                links.items(), key=lambda item: (order.index(item[0][0]), order.index(item[0][1]))
             )
-            for vendor, count in totals.items()
-        ),
-        key=lambda row: row.total,
-        reverse=True,
+        ],
+    )
+
+
+def compute_streaks(days: set[date], today: date) -> tuple[int, int]:
+    """(current, longest) runs of consecutive days with at least one application.
+
+    The current streak survives until the end of today: applying yesterday but not
+    yet today still counts, so the number doesn't reset every morning.
+    """
+    longest = 0
+    run = 0
+    previous: date | None = None
+    for day in sorted(days):
+        run = run + 1 if previous and day - previous == timedelta(days=1) else 1
+        longest = max(longest, run)
+        previous = day
+
+    current = 0
+    cursor = today if today in days else today - timedelta(days=1)
+    while cursor in days:
+        current += 1
+        cursor -= timedelta(days=1)
+    return current, longest
+
+
+def _zone(name: str | None) -> ZoneInfo | type[UTC]:
+    if not name:
+        return UTC
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return UTC
+
+
+@router.get("/activity", response_model=ActivityOut)
+def activity(
+    user: CurrentUser,
+    db: DbSession,
+    days: Annotated[int, Query(ge=7, le=371)] = 182,
+    tz: Annotated[str | None, Query(max_length=64)] = None,
+) -> ActivityOut:
+    """Applications per local calendar day, for the heatmap, streaks and weekly goal."""
+    zone = _zone(tz)
+    applications, _ = _load(db, user.id, None, None)
+
+    per_day: Counter[date] = Counter(
+        as_utc(application.applied_at).astimezone(zone).date()
+        for application in applications
+        if application.applied_at
+    )
+
+    today = utcnow().astimezone(zone).date()
+    first = today - timedelta(days=days - 1)
+    monday = today - timedelta(days=today.weekday())
+    current, longest = compute_streaks(set(per_day), today)
+
+    return ActivityOut(
+        days=[
+            ActivityDay(
+                date=(first + timedelta(days=offset)).isoformat(),
+                count=per_day[first + timedelta(days=offset)],
+            )
+            for offset in range(days)
+        ],
+        current_streak=current,
+        longest_streak=longest,
+        this_week=sum(count for day, count in per_day.items() if monday <= day <= today),
     )

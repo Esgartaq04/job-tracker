@@ -23,20 +23,37 @@ class VelocityBucket(BaseModel):
     applied: int
 
 
-class TimeInStage(BaseModel):
-    status: AppStatus
-    median_days: float | None
-    open_count: int
-
-
 class VelocityOut(BaseModel):
     weekly: list[VelocityBucket]
-    time_in_stage: list[TimeInStage]
     stale_count: int
 
 
-class SourceBreakdown(BaseModel):
-    ats_vendor: str
-    total: int
-    responded: int
-    response_rate: float
+class FlowNode(BaseModel):
+    #: An `AppStatus` value, or `no_reply` for applications still waiting on a first answer.
+    id: str
+    label: str
+    value: int
+
+
+class FlowLink(BaseModel):
+    source: str
+    target: str
+    value: int
+
+
+class FlowOut(BaseModel):
+    total_applied: int
+    nodes: list[FlowNode]
+    links: list[FlowLink]
+
+
+class ActivityDay(BaseModel):
+    date: str
+    count: int
+
+
+class ActivityOut(BaseModel):
+    days: list[ActivityDay]
+    current_streak: int
+    longest_streak: int
+    this_week: int
