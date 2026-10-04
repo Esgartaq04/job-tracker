@@ -15,6 +15,8 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
   const notify = useUi((state) => state.notify);
   const pixelFont = usePrefs((state) => state.pixelFont);
   const togglePixelFont = usePrefs((state) => state.togglePixelFont);
+  const backdrop = usePrefs((state) => state.backdrop);
+  const toggleBackdrop = usePrefs((state) => state.toggleBackdrop);
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -105,6 +107,20 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
             Pixel font: {pixelFont ? "On" : "Off"}
             <span className="block text-[11px] text-slate-500">
               {pixelFont ? "Switch to a plain, denser font" : "Switch back to the blocky font"}
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={backdrop === "scenery"}
+            onClick={toggleBackdrop}
+            className="block w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-surface-border/60"
+          >
+            Backdrop: {backdrop === "scenery" ? "Scenery" : "HD blocks"}
+            <span className="block text-[11px] text-slate-500">
+              {backdrop === "scenery"
+                ? "Switch to the tiled block texture"
+                : "Switch to a landscape of this dimension"}
             </span>
           </button>
           <button

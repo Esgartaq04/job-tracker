@@ -10,6 +10,10 @@ export const DIMENSION_LABELS: Record<Dimension, string> = {
   end: "The End",
 };
 
+export const BACKDROPS = ["blocks", "scenery"] as const;
+/** HD block texture tiled behind everything, or a pixel-art landscape of the dimension. */
+export type Backdrop = (typeof BACKDROPS)[number];
+
 /** Browser chrome colour per dimension — matches `--surface` in index.css. */
 export const THEME_COLORS: Record<Dimension, string> = {
   overworld: "#1c1611",
@@ -23,11 +27,13 @@ export const PREFS_KEY = "job-tracker:prefs";
 interface PrefsState {
   dimension: Dimension;
   pixelFont: boolean;
+  backdrop: Backdrop;
   /** Applications per week the XP bar fills towards. */
   weeklyGoal: number;
 
   setDimension: (dimension: Dimension) => void;
   togglePixelFont: () => void;
+  toggleBackdrop: () => void;
   setWeeklyGoal: (goal: number) => void;
 }
 
@@ -63,24 +69,33 @@ export const usePrefs = create<PrefsState>()(
     (set) => ({
       dimension: "overworld",
       pixelFont: true,
+      backdrop: "blocks",
       weeklyGoal: 10,
 
       setDimension: (dimension) => set({ dimension }),
       togglePixelFont: () => set((state) => ({ pixelFont: !state.pixelFont })),
+      toggleBackdrop: () =>
+        set((state) => ({ backdrop: state.backdrop === "blocks" ? "scenery" : "blocks" })),
       setWeeklyGoal: (goal) => set({ weeklyGoal: Math.min(99, Math.max(1, Math.round(goal))) }),
     }),
     {
       name: PREFS_KEY,
       storage: createJSONStorage(() => safeStorage),
-      partialize: ({ dimension, pixelFont, weeklyGoal }) => ({ dimension, pixelFont, weeklyGoal }),
+      partialize: ({ dimension, pixelFont, backdrop, weeklyGoal }) => ({
+        dimension,
+        pixelFont,
+        backdrop,
+        weeklyGoal,
+      }),
     },
   ),
 );
 
-/** Mirror the prefs onto <html> so the CSS variables and font switch. */
-export function applyPrefs(dimension: Dimension, pixelFont: boolean) {
+/** Mirror the prefs onto <html> so the CSS variables, font and backdrop switch. */
+export function applyPrefs(dimension: Dimension, pixelFont: boolean, backdrop: Backdrop) {
   const root = document.documentElement;
   root.dataset.dimension = dimension;
   root.dataset.font = pixelFont ? "pixel" : "clean";
+  root.dataset.backdrop = backdrop;
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLORS[dimension]);
 }

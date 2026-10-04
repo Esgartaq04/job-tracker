@@ -30,10 +30,11 @@ export function App() {
   const dismissToast = useUi((state) => state.dismissToast);
   const dimension = usePrefs((state) => state.dimension);
   const pixelFont = usePrefs((state) => state.pixelFont);
+  const backdrop = usePrefs((state) => state.backdrop);
 
   useServerEvents(signedIn);
 
-  useEffect(() => applyPrefs(dimension, pixelFont), [dimension, pixelFont]);
+  useEffect(() => applyPrefs(dimension, pixelFont, backdrop), [dimension, pixelFont, backdrop]);
 
   useEffect(() => {
     const onSignedOut = () => setSignedIn(false);

@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Activity, Flow, Funnel, Velocity } from "../../api/types";
 import { usePrefs } from "../../lib/prefs";
+import { useUi } from "../../lib/store";
 import { buildWeeks, levelFor } from "./ActivityHeatmap";
 import { Insights } from "./Insights";
 
@@ -25,10 +26,16 @@ const FLOW: Flow = {
     { id: "no_reply", label: "No reply yet", value: 2 },
   ],
   links: [
-    { source: "applied", target: "interview", value: 1 },
-    { source: "interview", target: "offer", value: 1 },
-    { source: "applied", target: "rejected", value: 1 },
-    { source: "applied", target: "no_reply", value: 2 },
+    { source: "applied", target: "interview", value: 1, application_ids: ["a-offer"] },
+    { source: "interview", target: "offer", value: 1, application_ids: ["a-offer"] },
+    { source: "applied", target: "rejected", value: 1, application_ids: ["a-rejected"] },
+    { source: "applied", target: "no_reply", value: 2, application_ids: ["a-wait-1", "a-wait-2"] },
+  ],
+  applications: [
+    { id: "a-offer", company: "Stripe", title: "SWE Intern", status: "offer" },
+    { id: "a-rejected", company: "Datadog", title: "Backend Intern", status: "rejected" },
+    { id: "a-wait-1", company: "Figma", title: "Frontend Intern", status: "applied" },
+    { id: "a-wait-2", company: null, title: null, status: "applied" },
   ],
 };
 
@@ -49,6 +56,7 @@ const json = (body: unknown) =>
 
 beforeEach(() => {
   usePrefs.setState({ weeklyGoal: 10 });
+  useUi.setState({ drawerId: null });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
@@ -87,6 +95,34 @@ describe("Insights", () => {
     for (const label of ["Applied", "Interview", "Offer", "Rejected", "No reply yet"]) {
       expect(chart).toHaveTextContent(label);
     }
+  });
+
+  it("lists the listings behind a clicked branch and opens one", async () => {
+    renderInsights();
+    await screen.findByText("Total applied");
+    const branch = screen.getByRole("button", { name: "Applied → Rejected: 1 application" });
+    fireEvent.click(branch);
+
+    const popover = screen.getByRole("dialog", { name: "Applied → Rejected: 1 listing" });
+    expect(popover).toHaveTextContent("Datadog");
+    expect(popover).not.toHaveTextContent("Stripe");
+
+    fireEvent.click(within(popover).getByRole("button", { name: /datadog/i }));
+    expect(useUi.getState().drawerId).toBe("a-rejected");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("lists everything that reached a clicked node, and closes on Escape", async () => {
+    renderInsights();
+    await screen.findByText("Total applied");
+    fireEvent.click(screen.getByRole("button", { name: "No reply yet: 2 applications" }));
+
+    const popover = screen.getByRole("dialog", { name: "No reply yet: 2 listings" });
+    expect(popover).toHaveTextContent("Figma");
+    expect(popover).toHaveTextContent("Unknown company");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("fills the XP bar towards the weekly goal", async () => {
