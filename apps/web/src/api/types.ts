@@ -138,7 +138,22 @@ export interface FlowNode {
 export interface Flow {
   total_applied: number;
   nodes: FlowNode[];
-  links: { source: FlowNode["id"]; target: FlowNode["id"]; value: number }[];
+  links: {
+    source: FlowNode["id"];
+    target: FlowNode["id"];
+    value: number;
+    /** The applications that took this step. */
+    application_ids: string[];
+  }[];
+  /** Every application in the flow, named for the drill-down. */
+  applications: FlowApplication[];
+}
+
+export interface FlowApplication {
+  id: string;
+  company: string | null;
+  title: string | null;
+  status: AppStatus;
 }
 
 export interface Activity {

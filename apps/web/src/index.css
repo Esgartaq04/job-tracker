@@ -36,8 +36,11 @@
     --block-2: 90 154 46;
     --block-3: 134 201 90;
     --block-4: 180 230 138;
-    --texture: url("/textures/dirt.png");
-    --veil: 0.82;
+    --texture: url("/textures/hd/dirt.png");
+    --veil: 0.7;
+    --scene: url("/scenes/overworld.svg");
+    --scene-veil-top: 0.6;
+    --scene-veil-bottom: 0.3;
   }
 
   :root[data-dimension="nether"] {
@@ -67,8 +70,11 @@
     --block-2: 191 90 24;
     --block-3: 232 130 44;
     --block-4: 255 184 102;
-    --texture: url("/textures/netherrack.png");
-    --veil: 0.8;
+    --texture: url("/textures/hd/netherrack.png");
+    --veil: 0.7;
+    --scene: url("/scenes/nether.svg");
+    --scene-veil-top: 0.55;
+    --scene-veil-bottom: 0.35;
   }
 
   :root[data-dimension="end"] {
@@ -98,8 +104,11 @@
     --block-2: 124 79 184;
     --block-3: 162 106 216;
     --block-4: 207 162 244;
-    --texture: url("/textures/end_stone.png");
-    --veil: 0.9;
+    --texture: url("/textures/hd/end_stone.png");
+    --veil: 0.82;
+    --scene: url("/scenes/end.svg");
+    --scene-veil-top: 0.35;
+    --scene-veil-bottom: 0.4;
   }
   :root {
     color-scheme: dark;
@@ -130,9 +139,9 @@
 }
 
 @layer components {
-  /* The dimension's block texture behind a veil of its surface colour. It sits on a
-     pseudo-element because image-rendering is inherited: on the element itself it
-     would pixelate every image inside. */
+  /* The dimension's 64×64 block texture behind a veil of its surface colour, at 2px a
+     texel. It sits on a pseudo-element because image-rendering is inherited: on the
+     element itself it would pixelate every image inside. */
   .mc-world {
     position: relative;
     isolation: isolate;
@@ -147,8 +156,22 @@
     background-image:
       linear-gradient(rgb(var(--surface) / var(--veil)), rgb(var(--surface) / var(--veil))),
       var(--texture);
-    background-size: auto, 64px 64px;
+    background-size: auto, 128px 128px;
     image-rendering: pixelated;
+  }
+
+  /* Scenery: the dimension's landscape, anchored to the ground so it crops from the
+     sky on tall screens. The veil is heavier at the top, behind the header. */
+  :root[data-backdrop="scenery"] .mc-world::before {
+    background-image:
+      linear-gradient(
+        rgb(var(--surface) / var(--scene-veil-top)),
+        rgb(var(--surface) / var(--scene-veil-bottom))
+      ),
+      var(--scene);
+    background-size: auto, cover;
+    background-position: center, center bottom;
+    background-repeat: no-repeat;
   }
 
   /* Inventory window: a black outline with a light top-left and dark bottom-right bevel. */

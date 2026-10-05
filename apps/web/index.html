@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="h-full" data-dimension="overworld" data-font="pixel">
+<html lang="en" class="h-full" data-dimension="overworld" data-font="pixel" data-backdrop="blocks">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Tracker</title>
     <script>
-      // Apply the saved dimension and font before first paint, so a Nether player
+      // Apply the saved dimension, font and backdrop before first paint, so a Nether player
       // never sees a flash of Overworld. Mirrors applyPrefs() in src/lib/prefs.ts.
       (function () {
         try {
@@ -23,6 +23,7 @@
             document.querySelector('meta[name="theme-color"]').content = colors[state.dimension];
           }
           if (state.pixelFont === false) root.dataset.font = "clean";
+          if (state.backdrop === "scenery") root.dataset.backdrop = "scenery";
         } catch (error) {
           // No storage: the defaults on <html> stand.
         }

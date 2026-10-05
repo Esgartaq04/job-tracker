@@ -373,6 +373,16 @@ def test_flow_follows_each_application_from_applied(auth_client: TestClient):
     assert nodes["applied"] == 3
     assert "saved" not in nodes
 
+    members = {(link["source"], link["target"]): link["application_ids"] for link in flow["links"]}
+    assert members[("applied", "interview")] == [offer["id"]]
+    assert members[("interview", "offer")] == [offer["id"]]
+    assert members[("applied", "rejected")] == [rejected["id"]]
+    assert members[("applied", "no_reply")] == [waiting["id"]]
+    listed = {application["id"]: application for application in flow["applications"]}
+    assert set(listed) == {offer["id"], rejected["id"], waiting["id"]}
+    assert listed[rejected["id"]]["title"] == "B"
+    assert listed[rejected["id"]]["status"] == "rejected"
+
 
 def test_flow_ignores_backward_moves_and_counts_skipped_columns(auth_client: TestClient):
     application = create(auth_client)

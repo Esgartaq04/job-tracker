@@ -17,6 +17,7 @@ from src.models.util import as_utc, utcnow
 from src.schemas.stats import (
     ActivityDay,
     ActivityOut,
+    FlowApplication,
     FlowLink,
     FlowNode,
     FlowOut,
@@ -215,7 +216,8 @@ def flow(user: CurrentUser, db: DbSession) -> FlowOut:
     applications, events_by_app = _load(db, user.id, None, None)
 
     links: Counter[tuple[str, str]] = Counter()
-    total_applied = 0
+    members: dict[tuple[str, str], list[str]] = defaultdict(list)
+    sent: list[FlowApplication] = []
     for application in applications:
         seen = {event.to_status for event in events_by_app.get(application.id, [])} | {
             application.status
@@ -223,8 +225,17 @@ def flow(user: CurrentUser, db: DbSession) -> FlowOut:
         path = flow_path(seen, application.status, application.applied_at is not None)
         if not path:
             continue
-        total_applied += 1
-        links.update(zip(path, path[1:], strict=False))
+        sent.append(
+            FlowApplication(
+                id=str(application.id),
+                company=application.company,
+                title=application.title,
+                status=application.status,
+            )
+        )
+        for step in zip(path, path[1:], strict=False):
+            links[step] += 1
+            members[step].append(str(application.id))
 
     # A node's size is whichever is larger of what flowed in and what flowed out. Every
     # path has at least two steps, so `applied`'s outflow is the total.
@@ -241,14 +252,20 @@ def flow(user: CurrentUser, db: DbSession) -> FlowOut:
 
     order = list(FLOW_LABELS)
     return FlowOut(
-        total_applied=total_applied,
+        total_applied=len(sent),
         nodes=nodes,
         links=[
-            FlowLink(source=source, target=target, value=count)
+            FlowLink(
+                source=source,
+                target=target,
+                value=count,
+                application_ids=members[(source, target)],
+            )
             for (source, target), count in sorted(
                 links.items(), key=lambda item: (order.index(item[0][0]), order.index(item[0][1]))
             )
         ],
+        applications=sent,
     )
 
 

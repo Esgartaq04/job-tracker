@@ -39,12 +39,24 @@ class FlowLink(BaseModel):
     source: str
     target: str
     value: int
+    #: The applications that took this step, so a click on the branch can list them.
+    application_ids: list[str]
+
+
+class FlowApplication(BaseModel):
+    """Just enough of an application to name it in the flow diagram's drill-down."""
+
+    id: str
+    company: str | None = None
+    title: str | None = None
+    status: AppStatus
 
 
 class FlowOut(BaseModel):
     total_applied: int
     nodes: list[FlowNode]
     links: list[FlowLink]
+    applications: list[FlowApplication]
 
 
 class ActivityDay(BaseModel):

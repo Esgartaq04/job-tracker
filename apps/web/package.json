@@ -10,7 +10,8 @@
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "art": "node scripts/make-art.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
