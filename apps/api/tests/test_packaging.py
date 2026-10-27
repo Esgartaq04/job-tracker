@@ -32,12 +32,13 @@ def test_the_image_installs_only_extras_that_exist():
     assert not unknown, f"Dockerfile installs extras that pyproject doesn't define: {unknown}"
 
 
-def test_the_image_carries_the_llm_extra():
-    """Without it, ANTHROPIC_API_KEY is set and Tier 4 still never runs."""
-    assert "llm" in dockerfile_extras(), (
-        "apps/api/Dockerfile must install '.[llm]' or Tier 4 is dead in the container "
-        "even with a key configured — see docs/DEPLOYMENT.md §3.2"
-    )
+def test_anthropic_is_a_core_dependency():
+    """Every user brings their own Claude key, so the SDK can't sit behind an extra the
+    image might not install."""
+    pyproject = tomllib.loads((API_ROOT / "pyproject.toml").read_text())
+    deps = pyproject["project"]["dependencies"]
+    assert any(d.startswith("anthropic") for d in deps)
+    assert "llm" not in declared_extras()
 
 
 def test_the_image_does_not_carry_the_browser_extra():

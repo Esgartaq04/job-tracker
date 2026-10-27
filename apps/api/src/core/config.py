@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     llm_max_input_chars: int = 32_000
     llm_monthly_call_cap: int = 500
 
+    # Seals each user's saved Claude API key at rest (src/core/crypto.py). Required outside
+    # local development; locally a fixed fallback keeps `uvicorn` startable with no setup.
+    ai_key_secret: str | None = None
+
     # Staleness thresholds surfaced to the board (days).
     stale_warn_days: int = 14
     stale_dim_days: int = 30

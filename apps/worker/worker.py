@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api"))
 from arq import cron  # noqa: E402
 from arq.connections import RedisSettings  # noqa: E402
 
+from src.core import crypto, redact  # noqa: E402
 from src.core.config import settings  # noqa: E402
 from src.services.ingestion.queue import run_cleanup_now, run_ingest_now  # noqa: E402
 
@@ -74,6 +75,10 @@ async def sweep_reminders(_ctx: dict) -> dict[str, int]:
 
 
 async def startup(_ctx: dict) -> None:
+    # arq sets up its own log handlers after this module is imported, so the filter goes
+    # on here rather than next to `basicConfig`.
+    redact.install()
+    crypto.check_configured()
     logger.info("worker ready (db=%s)", settings.database_url.split("@")[-1])
 
 

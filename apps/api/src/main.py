@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.core import crypto, redact
 from src.core.config import settings
 from src.routers import (
     applications,
@@ -24,10 +25,12 @@ logging.basicConfig(
     level=logging.INFO,
     format='{"level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}',
 )
+redact.install()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    crypto.check_configured()
     # The SSE hub needs the running loop so background threads can publish into it.
     hub.bind_loop(asyncio.get_running_loop())
     yield

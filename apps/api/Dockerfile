@@ -10,12 +10,12 @@ WORKDIR /app
 
 # Dependencies first so a source-only change doesn't re-resolve the tree.
 #
-# `[llm]` is included because Tier 4 is otherwise dead in the container even with a key
-# set: `tiers/llm.py` raises on `import anthropic` and the pipeline silently stops at
-# Tier 2. `[browser]` is deliberately absent — Playwright's download is hundreds of
+# `anthropic` is a core dependency, so the bare install carries it: every user brings
+# their own Claude key, and without the SDK the AI features can't run in the container.
+# `[browser]` is deliberately absent — Playwright's download is hundreds of
 # megabytes and won't fit a 512 MB instance. Tier 3 gets its own image if it ever ships.
 COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install ".[llm]"
+RUN pip install --upgrade pip && pip install .
 
 COPY alembic.ini ./
 COPY alembic ./alembic
