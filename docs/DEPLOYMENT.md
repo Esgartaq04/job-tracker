@@ -198,28 +198,36 @@ Every setting, with the real defaults from `core/config.py`:
 | `REDIS_URL` | **unset** | Setting it without running a worker means jobs enqueue and nothing consumes them |
 | `JWT_SECRET` | 48 random bytes | Default `dev-secret-change-me` signs every session |
 | `CORS_ORIGINS` | `["https://<your-app>.vercel.app"]` | Parsed as a **JSON list** by pydantic-settings. Add the custom domain when you add one |
-| `AI_KEY_SECRET` | generated (`generateValue`) | Seals each user's saved Claude key. **Required** outside `ENVIRONMENT=local`: the API (and the worker, if you run one) refuses to start without it. Losing or changing it makes every stored key unreadable. Nothing else breaks and users just re-enter theirs, but copy the generated value somewhere safe after the first deploy |
+| `AI_KEY_SECRET` | generated (`generateValue`) | Seals each user's saved Claude key. **Required** outside `ENVIRONMENT=local`: the API (and the worker, if you run one) refuses to start without it. See the warning below this table |
 | `INGEST_BROWSER_ENABLED` | leave unset | Read directly by `tiers/browser.py`; anything but `1`/`true`/`yes` is off |
 | `REMINDER_EMAIL_ENABLED` | `false` | `notify.py` has no provider — a `true` here changes nothing but the log |
 | `REMINDER_SWEEP_HOUR_UTC` | `13` | 8am Chicago in summer, 7am in winter. Read by the **worker's** arq cron only; the GitHub Actions schedule has its own time |
 | `SWEEP_SECRET` | 32 random bytes, or unset | Must match the `SWEEP_SECRET` repository secret. Unset means `POST /reminders/sweep` 404s — the safe default |
 | `ENVIRONMENT` | `production` | Surfaced by `/healthz` |
 
+**Treat `AI_KEY_SECRET` as permanent:** changing or losing it makes every stored key
+unreadable (each user has to add theirs again), and re-creating the Render service from the
+Blueprint generates a new one, so copy the generated value somewhere safe after the first
+deploy.
+
 **There is no server-wide Anthropic key.** Each user pastes their own under 👤 → **Claude
 API key**; the API checks it with Claude once, then stores it encrypted with
 `AI_KEY_SECRET`, and never returns it. After a deploy nobody has a key yet, you included,
 so every AI feature stays off until each person adds theirs. Old `llm_calls` rows stay in
-the database; nothing reads them any more.
+the database and nothing reads them any more, but the app still writes a row for every AI
+call, so don't drop the table.
 
 What that protects, and what it doesn't: a database leak gets ciphertext only, because the
 secret lives in the host's environment and not in Neon. A stolen session token can spend
 someone's key but can't read it. You, as the operator, could decrypt any key — true of any
-server-side secret — so the dialog tells each user to create a separate key for this app
-and set a monthly spend limit on it in the Anthropic console. That limit is the real cap.
+server-side secret — so the dialog's tip is: give this app its own Anthropic workspace with
+a monthly spend limit, and make its key there. Anthropic sets spend limits per workspace or
+per organization, not per key, so that workspace's limit is the real cap.
 
-If you later run `apps/worker`, give it the same `AI_KEY_SECRET` and `ENVIRONMENT=production`;
-a worker with a different secret can't open keys the API sealed, so Tier 4 and the
-description clean-up skip for everyone, recorded as `no_key`.
+If you later run `apps/worker`, give it the same `AI_KEY_SECRET` and `ENVIRONMENT=production`.
+A worker with a different secret can't open keys the API sealed: Tier 4 skips for everyone
+and records `no_key` on the card, and the description clean-up skips without recording
+anything.
 
 Turn off preview environments. Each one is another process against the same database, and
 on the free plan they eat the 750 hours.
@@ -303,6 +311,20 @@ Ping `/healthz`, not `/readyz`. `/readyz` opens a database connection, so pingin
 ten minutes keeps Neon's compute awake around the clock and burns the 100 CU-hours you're
 trying to conserve. `/healthz` touches nothing.
 
+### 4.6 Upgrading an existing deploy
+
+For a deploy that predates per-user Claude keys (migration `0003`):
+
+1. **Set `AI_KEY_SECRET` before you deploy**, on the API and on the worker if you run one.
+   A Render service that isn't synced from the Blueprint won't generate it, so add it by
+   hand, or the new image fails at startup.
+2. **Delete the old `ANTHROPIC_API_KEY`** from the host's dashboard. Removing it from
+   `render.yaml` doesn't delete a value set in the dashboard. Nothing reads it now.
+3. **After the deploy, add your own key** under 👤 → **Claude API key**. Nobody has a key
+   until they add one, so the AI features are off for everyone until then.
+4. **To roll back** to an image from before `0003`, run `alembic downgrade 0002` first, or
+   the old image won't boot.
+
 ---
 
 ## 5. What it costs, and what makes it stop being free
@@ -313,10 +335,11 @@ trying to conserve. `/healthz` touches nothing.
 | Same with Fly instead of Render free | ~$2–6 |
 
 Claude isn't on this bill: each user pays Anthropic directly through their own key, and
-can cap it with a monthly spend limit there. Tier 4 still fires whenever the cheap tiers
-leave holes, and `ingest_jobs` records `tier_succeeded` per attempt, so how often it runs
-is one query away. README §11's alert threshold (Tier-4 rate over 25%) is now a quality
-signal for the extractors and a cost signal for your users, not for you.
+can cap it with a monthly spend limit on the Anthropic workspace that key belongs to. For
+users with a saved key, Tier 4 still fires whenever the cheap tiers leave holes; for
+everyone else it never runs. `ingest_jobs` records `tier_succeeded` per attempt, so how
+often it runs is one query away. README §11's alert threshold (Tier-4 rate over 25%) is now
+a quality signal for the extractors and a cost signal for your users, not for you.
 
 Migration triggers, in the order you'll hit them:
 

@@ -45,12 +45,12 @@ no key of its own. Until you add one, the pipeline stops at the cheaper tiers, d
 stay raw, and the other features tell you to add a key.
 
 1. Create a key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
-   Make it a separate key for this app.
+   Tip: give this app its own Anthropic workspace with a monthly spend limit, and make its
+   key there. Anthropic sets spend limits per workspace or per organization, not per key,
+   so that workspace's limit is the only cap on what the app can spend.
 2. In the web app, open 👤 → **Claude API key**.
 3. Paste it in and save. The API checks it with Claude, stores it encrypted, and never
    shows it again; you'll only see its last four characters.
-4. Optionally, set a monthly spend limit on that key in the console. That limit is the
-   only cap on what the key can spend.
 
 Locally you don't need to configure anything to make this work: with `AI_KEY_SECRET`
 unset the key is sealed with a built-in dev secret, and the API logs a warning saying so.

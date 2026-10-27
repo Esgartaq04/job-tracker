@@ -129,12 +129,15 @@ its last four characters, never the key. Every AI call (Tier 4, the clean-up, co
 letters, the extension's resume and field calls) builds a client from the calling user's
 key, and background jobs load it inside the job, so a key never rides through the queue.
 No key answers 428 with a message that points at the dialog. A key Claude rejects flips to
-`rejected` and answers 424; an empty Claude account or a rate limit answers 402 or 429.
-The monthly cap is gone: the spend is the user's own, and the dialog suggests a spend
-limit on the key itself. `anthropic` became a core dependency, and `AI_KEY_SECRET` is
+`rejected` and answers 424; an empty Claude account or one at its spend limit answers 402,
+and a rate limit 429, each with its own message.
+The monthly cap is gone: the spend is the user's own, and the dialog suggests giving the
+app its own Anthropic workspace with a monthly spend limit (Anthropic sets those per
+workspace, not per key). `anthropic` became a core dependency, and `AI_KEY_SECRET` is
 required outside local, so the API and worker refuse to start without it. Changing it
 makes every stored key unreadable and users enter theirs again. After the deploy nobody
-has a key until they add one; existing `llm_calls` rows stay but nothing reads them.
+has a key until they add one. Nothing reads `llm_calls` any more, but every AI call still
+writes a row there, so the table stays.
 
 ---
 
