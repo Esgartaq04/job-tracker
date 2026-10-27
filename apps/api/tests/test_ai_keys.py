@@ -18,9 +18,23 @@ def test_normalize_trims_paste_whitespace():
     assert ai_keys.normalize(f"  {KEY}\n") == KEY
 
 
+def test_normalize_accepts_the_redactors_whole_alphabet():
+    key = "sk-ant-api03-AbC_d-Ef0123456789" + "z" * 10
+    assert ai_keys.normalize(key) == key
+
+
 @pytest.mark.parametrize(
     "bad",
-    ["", "sk-proj-abc", "sk-ant-", "sk-ant-ab cd" + "x" * 20, "sk-ant-" + "x" * 400],
+    [
+        "",
+        "sk-proj-abc",
+        "sk-ant-",
+        "sk-ant-ab cd" + "x" * 20,
+        "sk-ant-" + "x" * 400,
+        # Outside the log redactor's alphabet, a key could ride an error trace past it.
+        "sk-ant-" + "a" * 10 + "\x00" + "b" * 20,
+        "sk-ant-" + "a" * 10 + "." + "b" * 20,
+    ],
 )
 def test_normalize_rejects_what_is_not_a_claude_key(bad):
     with pytest.raises(ai_keys.KeyFormatError):

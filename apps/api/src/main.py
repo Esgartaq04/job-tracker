@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.core import crypto, redact
 from src.core.config import settings
 from src.routers import (
+    ai_key,
     applications,
     auth,
     autofill,
@@ -57,6 +58,7 @@ app.add_middleware(
 
 for router in (
     auth.router,
+    ai_key.router,
     applications.router,
     ingest.router,
     ingest.application_router,

@@ -5,19 +5,17 @@ audit. A key is never logged: the only identifier in a log line is the user's id
 """
 
 import logging
-import re
 import uuid
 
 import anthropic
 from sqlalchemy.orm import Session
 
-from src.core import crypto
+from src.core import crypto, redact
 from src.models.user_ai_key import UserAIKey
 from src.models.util import utcnow
 
 logger = logging.getLogger(__name__)
 
-_PREFIX = "sk-ant-"
 _MIN_LENGTH, _MAX_LENGTH = 20, 300
 
 _BAD_FORMAT = "That doesn't look like a Claude API key. It should start with sk-ant-."
@@ -41,11 +39,10 @@ def normalize(raw: str) -> str:
     """Trim paste whitespace and check the key looks like a Claude key, before spending a
     network call on it. Raises `KeyFormatError` without echoing the input."""
     key = raw.strip()
-    if (
-        not key.startswith(_PREFIX)
-        or not _MIN_LENGTH <= len(key) <= _MAX_LENGTH
-        or re.search(r"\s", key)
-    ):
+    # Only the log redactor's alphabet gets through. A key with other characters in it (a
+    # control character, a dot) wouldn't match the redactor's pattern, so it could carry
+    # past it in an error trace.
+    if not _MIN_LENGTH <= len(key) <= _MAX_LENGTH or not redact.KEY_PATTERN.fullmatch(key):
         raise KeyFormatError(_BAD_FORMAT)
     return key
 

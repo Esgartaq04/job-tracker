@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from src.core.db import Base, engine  # noqa: E402
 from src.main import app  # noqa: E402
 from src.models import User  # noqa: E402
+from src.routers import ai_key  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -59,6 +60,13 @@ def _clean_tables() -> Iterator[None]:
     with engine.begin() as connection:
         for table in reversed(Base.metadata.sorted_tables):
             connection.execute(table.delete())
+
+
+@pytest.fixture(autouse=True)
+def _reset_key_attempts() -> None:
+    """The /ai-key rate limit lives in process memory, so it would carry from one test
+    into the next."""
+    ai_key.attempts.reset()
 
 
 @pytest.fixture(autouse=True)
