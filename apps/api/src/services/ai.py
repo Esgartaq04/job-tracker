@@ -13,7 +13,7 @@ import io
 import logging
 import uuid
 import zipfile
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,10 @@ OUT_OF_CREDIT = (
     "Your Claude account is out of credit. Add credit at console.anthropic.com, then try again."
 )
 RATE_LIMITED = "Your Claude account hit its rate limit. Try again in a minute."
+SPEND_LIMIT = (
+    "Your Claude account hit its spend limit. "
+    "Raise it in the Anthropic console, or wait for it to reset."
+)
 AI_CALL_FAILED = "The AI service couldn't complete that. Try again shortly."
 
 
@@ -57,15 +61,28 @@ class ResumeRejected(ValueError):
         self.status_code = status_code
 
 
-def user_key(db: Session, user_id: uuid.UUID) -> str:
+class SavedKey(NamedTuple):
+    key: str
+    #: The sealed form `key` was opened from, which says which saved key this is: a
+    #: client only marks *that* key rejected, never one the user saved since.
+    ciphertext: str | None
+
+    def __repr__(self) -> str:
+        # A tuple's repr shows its items, and one of these is the key.
+        return "SavedKey(key=<hidden>)"
+
+
+def user_key(db: Session, user_id: uuid.UUID) -> SavedKey:
     """The user's saved key, or why there isn't a usable one. A key Claude refused is
-    refused here too, without asking Claude again, until the user saves a new one."""
-    key = ai_keys.read_key(db, user_id)
+    refused here too, without asking Claude again, until the user saves a new one. The
+    key, its status and its ciphertext all come off one read of the row."""
+    row = ai_keys.get_row(db, user_id)
+    key = None if row is None else ai_keys.open_key(row)
     if key is None:
         raise AIKeyMissing(MISSING_KEY)
-    if ai_keys.get_row(db, user_id).status == "rejected":
+    if row.status == "rejected":
         raise AIKeyRejected(REJECTED_KEY)
-    return key
+    return SavedKey(key, row.ciphertext)
 
 
 def has_key(db: Session, user_id: uuid.UUID) -> bool:
@@ -87,12 +104,16 @@ def _build_client(api_key: str):
 
 class UserClient:
     """An Anthropic client on one user's key. When Claude refuses the key mid-call, the
-    key is marked rejected on the spot, so the next call stops at `user_key`."""
+    key is marked rejected on the spot, so the next call stops at `user_key` — unless
+    the user has saved a different key since this client was built."""
 
-    def __init__(self, inner, db: Session, user_id: uuid.UUID) -> None:
+    def __init__(
+        self, inner, db: Session, user_id: uuid.UUID, ciphertext: str | None = None
+    ) -> None:
         self._inner = inner
         self._db = db
         self._user_id = user_id
+        self._ciphertext = ciphertext
         self.messages = _Messages(self)
 
     def _call(self, method: str, request: dict):
@@ -102,7 +123,7 @@ class UserClient:
             if sdk_error_kind(exc) != "auth":
                 raise
             logger.info("Claude rejected the saved key of user %s", self._user_id)
-            ai_keys.mark_rejected(self._db, self._user_id)
+            ai_keys.mark_rejected(self._db, self._user_id, ciphertext=self._ciphertext)
             raise AIKeyRejected(REJECTED_KEY) from exc
 
 
@@ -122,7 +143,8 @@ class _Messages:
 def client_for(db: Session, user_id: uuid.UUID) -> UserClient:
     """A client on the user's own key, built for this call. Nothing is cached, so a key
     never outlives the request or job that loaded it."""
-    return UserClient(_build_client(user_key(db, user_id)), db, user_id)
+    saved = user_key(db, user_id)
+    return UserClient(_build_client(saved.key), db, user_id, saved.ciphertext)
 
 
 def client_or_none(db: Session, user_id: uuid.UUID) -> UserClient | None:
@@ -133,10 +155,17 @@ def client_or_none(db: Session, user_id: uuid.UUID) -> UserClient | None:
         return None
 
 
-def sdk_error_kind(exc: BaseException) -> Literal["auth", "rate_limit", "credit", "other"] | None:
+SdkErrorKind = Literal["auth", "rate_limit", "credit", "spend_limit", "other"]
+
+#: The kinds that are the user's own Claude account's limits, not a fault of ours or
+#: Claude's: reported to them plainly and logged as one line, without a traceback.
+ACCOUNT_LIMITS: frozenset[SdkErrorKind] = frozenset({"rate_limit", "credit", "spend_limit"})
+
+
+def sdk_error_kind(exc: BaseException) -> SdkErrorKind | None:
     """What an Anthropic SDK error says about the user's key or account, or None when
-    `exc` isn't one. "auth" is their key; "rate_limit" and "credit" are their account's
-    limits, not ours."""
+    `exc` isn't one. "auth" is their key; "rate_limit", "credit" (an empty balance) and
+    "spend_limit" (the monthly limit they set) are their account's limits, not ours."""
     try:
         import anthropic
     except ImportError:
@@ -145,8 +174,13 @@ def sdk_error_kind(exc: BaseException) -> Literal["auth", "rate_limit", "credit"
         return "auth"
     if isinstance(exc, anthropic.RateLimitError):
         return "rate_limit"
-    if isinstance(exc, anthropic.BadRequestError) and "credit balance" in str(exc).lower():
-        return "credit"
+    if isinstance(exc, anthropic.BadRequestError):
+        message = str(exc).lower()
+        if "credit balance" in message:
+            return "credit"
+        # "You have reached your specified API usage limits. You will regain access on …"
+        if "usage limit" in message:
+            return "spend_limit"
     if isinstance(exc, anthropic.APIError):
         return "other"
     return None

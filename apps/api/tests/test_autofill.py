@@ -286,6 +286,16 @@ def _request() -> httpx.Request:
             id="credit",
         ),
         pytest.param(
+            lambda: anthropic.BadRequestError(
+                "You have reached your specified API usage limits. "
+                "You will regain access on 2026-11-01 at 00:00 UTC.",
+                response=httpx.Response(400, request=_request()),
+                body=None,
+            ),
+            ai.SPEND_LIMIT,
+            id="spend_limit",
+        ),
+        pytest.param(
             lambda: anthropic.InternalServerError(
                 "overloaded", response=httpx.Response(500, request=_request()), body=None
             ),
@@ -300,17 +310,29 @@ def _request() -> httpx.Request:
     ],
 )
 def test_map_when_the_model_call_fails_says_why(
-    auth_client: TestClient, fake_ai, monkeypatch, make_error, reason
+    auth_client: TestClient, fake_ai, monkeypatch, caplog, make_error, reason
 ):
     def fail(**_):
         raise make_error()
 
     monkeypatch.setattr(fake_ai.messages, "parse", fail)
-    result = plan(auth_client, [field("d", "Email"), field("c", "Years of Kubernetes experience")])
+    with caplog.at_level("INFO", logger="src.services.autofill"):
+        result = plan(
+            auth_client, [field("d", "Email"), field("c", "Years of Kubernetes experience")]
+        )
 
     assert values(result) == {"d": "esteven@example.com"}, "the rules still fill what they can"
     assert result["used_ai"] is False
     assert result["ai_skipped_reason"] == reason
+
+    logged = [r for r in caplog.records if r.name == "src.services.autofill"]
+    # The log redactor turns `exc_info` into `exc_text`, so a traceback is either.
+    if reason in (ai.RATE_LIMITED, ai.OUT_OF_CREDIT, ai.SPEND_LIMIT):
+        # The user's own account limits: a line, not a stack trace.
+        assert logged
+        assert all(r.levelname == "INFO" and not (r.exc_info or r.exc_text) for r in logged)
+    else:
+        assert any(r.levelname == "ERROR" and (r.exc_info or r.exc_text) for r in logged)
 
 
 def test_map_does_not_swallow_a_bug_in_the_model_call(

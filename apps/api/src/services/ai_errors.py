@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 def ai_errors() -> Iterator[None]:
     """Map the reasons an AI call can't happen onto statuses the web app and the
     extension can explain: 428 no key, 424 key rejected, 503 off, 413/415/422 a bad
-    resume, 429 and 402 the user's Claude account's limits, 502 the model failed.
+    resume, 429 and 402 the user's Claude account's limits (402 for both an empty balance
+    and a spend limit), 502 the model failed.
 
     Never 401: the web app reads that as "signed out" and drops the session."""
     try:
@@ -41,6 +42,9 @@ def ai_errors() -> Iterator[None]:
         if kind == "credit":
             logger.info("AI call refused: the user's Claude account is out of credit")
             raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, ai.OUT_OF_CREDIT) from exc
+        if kind == "spend_limit":
+            logger.info("AI call refused: the user's Claude account hit its spend limit")
+            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, ai.SPEND_LIMIT) from exc
         # Overload, timeouts, bad requests — logged in full, reported plainly.
         logger.exception("AI call failed")
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, ai.AI_CALL_FAILED) from exc

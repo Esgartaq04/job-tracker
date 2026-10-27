@@ -71,7 +71,11 @@ MAP_SYSTEM = (
 
 #: What the user is told when Claude fails the call for a reason other than their key.
 #: Anything not listed here gets `ai.AI_CALL_FAILED`.
-_SDK_FAILURE_REASONS = {"rate_limit": ai.RATE_LIMITED, "credit": ai.OUT_OF_CREDIT}
+_SDK_FAILURE_REASONS = {
+    "rate_limit": ai.RATE_LIMITED,
+    "credit": ai.OUT_OF_CREDIT,
+    "spend_limit": ai.SPEND_LIMIT,
+}
 
 
 class _Answer(BaseModel):
@@ -315,6 +319,11 @@ def _ask_model(
         kind = ai.sdk_error_kind(exc)
         if kind is None:
             raise
-        logger.exception("autofill mapping failed")
-        return None, _SDK_FAILURE_REASONS.get(kind, ai.AI_CALL_FAILED)
+        reason = _SDK_FAILURE_REASONS.get(kind, ai.AI_CALL_FAILED)
+        if kind in ai.ACCOUNT_LIMITS:
+            # The user's own account's limit, as `ai_errors` treats it: a line, no trace.
+            logger.info("autofill without AI: %s", reason)
+        else:
+            logger.exception("autofill mapping failed")
+        return None, reason
     return (response.parsed_output.answers if response.parsed_output else []), None

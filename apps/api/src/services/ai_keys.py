@@ -8,6 +8,7 @@ import logging
 import uuid
 
 import anthropic
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from src.core import crypto, redact
@@ -60,12 +61,23 @@ def read_key(db: Session, user_id: uuid.UUID) -> str | None:
     changed `AI_KEY_SECRET`, tampering). Unreadable is treated as missing: the user
     re-enters it. Ignores `status`; deciding what a rejected key means is the caller's."""
     row = get_row(db, user_id)
-    if row is None:
-        return None
+    return None if row is None else open_key(row)
+
+
+#: Users whose stored key was reported unreadable. It stays unreadable until they save a
+#: new one, and every page load asks, so this process says so once per user.
+_reported_unreadable: set[uuid.UUID] = set()
+
+
+def open_key(row: UserAIKey) -> str | None:
+    """`row`'s plaintext key, or None when it can't be opened. `read_key` for a caller
+    that already has the row."""
     try:
-        return crypto.open_sealed(user_id, row.ciphertext)
+        return crypto.open_sealed(row.user_id, row.ciphertext)
     except crypto.SealError:
-        logger.warning("stored AI key for %s can't be opened", user_id)
+        if row.user_id not in _reported_unreadable:
+            _reported_unreadable.add(row.user_id)
+            logger.warning("stored AI key for %s can't be opened", row.user_id)
         return None
 
 
@@ -93,16 +105,26 @@ def delete_key(db: Session, user_id: uuid.UUID) -> None:
         db.flush()
 
 
-def mark_rejected(db: Session, user_id: uuid.UUID) -> None:
+def mark_rejected(db: Session, user_id: uuid.UUID, ciphertext: str | None = None) -> None:
     """Record that Claude refused this user's saved key, and commit `db`.
 
+    With `ciphertext`, only while the row still holds that sealed key: a call that loaded
+    the key before the user replaced it must not reject the replacement. The check is in
+    the UPDATE itself, against the table rather than this session's copy of the row,
+    which can predate a save made by another request.
+
     The commit is deliberate and takes the caller's pending work with it (the `LLMCall`
-    row for the attempt, which did happen). It runs on the caller's session because a
-    second connection would block on SQLite's write lock, which that session already
-    holds once `reserve_call` has flushed."""
-    row = get_row(db, user_id)
-    if row is not None:
-        row.status = "rejected"
+    row for the attempt, which did happen), whether or not the row matched. It runs on
+    the caller's session because a second connection would block on SQLite's write lock,
+    which that session already holds once `reserve_call` has flushed."""
+    query = update(UserAIKey).where(UserAIKey.user_id == user_id)
+    if ciphertext is not None:
+        query = query.where(UserAIKey.ciphertext == ciphertext)
+    db.execute(query.values(status="rejected"), execution_options={"synchronize_session": False})
+    # This session's copy may be stale either way; the next read reloads it.
+    cached = db.identity_map.get(db.identity_key(UserAIKey, user_id))
+    if cached is not None:
+        db.expire(cached)
     db.commit()
 
 

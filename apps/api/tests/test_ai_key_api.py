@@ -80,6 +80,34 @@ def test_a_body_without_a_string_key_is_422(auth_client):
     assert auth_client.put(API, json={"api_key": 12345}).status_code == 422
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param({"api_key": [KEY]}, id="key_in_a_list"),
+        pytest.param({"apiKey": KEY}, id="misnamed_field"),
+        pytest.param([KEY], id="bare_list"),
+    ],
+)
+def test_a_malformed_body_is_422_without_echoing_the_key(auth_client, body):
+    response = auth_client.put(API, json=body)
+    assert response.status_code == 422
+    assert KEY not in response.text and "ssssssss" not in response.text
+    # Still FastAPI's shape, minus what can quote the input back.
+    errors = response.json()["detail"]
+    assert isinstance(errors, list) and errors
+    for error in errors:
+        assert {"type", "loc", "msg"} <= error.keys()
+        assert "input" not in error and "ctx" not in error
+
+
+def test_other_routes_keep_the_default_422(client):
+    response = client.post(
+        "/api/v1/auth/register", json={"email": "not-an-email", "password": "pw-echoed-back"}
+    )
+    assert response.status_code == 422
+    assert any("input" in error for error in response.json()["detail"])
+
+
 def test_claude_refuses_key(auth_client, monkeypatch):
     def refuse(api_key):
         raise ai_keys.KeyNotAccepted("Claude didn't accept this key.")

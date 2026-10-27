@@ -175,8 +175,12 @@ class FakeAI:
 @pytest.fixture
 def fake_ai(monkeypatch) -> FakeAI:
     """Every user has a key, and every client is this fake."""
+    from src.services import ai
+
     fake = FakeAI()
-    monkeypatch.setattr("src.services.ai.user_key", lambda db, user_id: "sk-ant-test-0000")
+    monkeypatch.setattr(
+        "src.services.ai.user_key", lambda db, user_id: ai.SavedKey("sk-ant-test-0000", None)
+    )
 
     def build(api_key):
         fake.keys.append(api_key)

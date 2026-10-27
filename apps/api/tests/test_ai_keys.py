@@ -98,6 +98,64 @@ def test_mark_rejected_without_a_row_is_a_no_op(db_session, user):
     assert ai_keys.get_row(db_session, user.id) is None
 
 
+def test_a_loaded_key_does_not_show_in_its_repr(db_session, user):
+    from src.services import ai
+
+    ai_keys.save_key(db_session, user.id, KEY)
+    db_session.commit()
+    saved = ai.user_key(db_session, user.id)
+    assert saved.key == KEY
+    assert KEY not in repr(saved) and KEY not in str(saved)
+
+
+def test_mark_rejected_with_the_key_in_use_rejects_it(db_session, user):
+    sealed = ai_keys.save_key(db_session, user.id, KEY).ciphertext
+    db_session.commit()
+    ai_keys.mark_rejected(db_session, user.id, ciphertext=sealed)
+    assert ai_keys.get_row(db_session, user.id).status == "rejected"
+
+
+def test_mark_rejected_leaves_a_key_saved_since_alone(db_session, user):
+    from src.models import LLMCall
+    from src.services import ai
+
+    stale = ai_keys.save_key(db_session, user.id, KEY).ciphertext
+    db_session.commit()
+    new = "sk-ant-api03-" + "n" * 40
+    ai_keys.save_key(db_session, user.id, new)
+    db_session.commit()
+
+    ai.reserve_call(db_session, user.id, "cleanup")
+    ai_keys.mark_rejected(db_session, user.id, ciphertext=stale)
+    db_session.rollback()  # it still commits the caller's work, match or not
+
+    assert ai_keys.get_row(db_session, user.id).status == "ok"
+    assert ai_keys.read_key(db_session, user.id) == new
+    assert db_session.query(LLMCall).count() == 1
+
+
+def test_mark_rejected_checks_the_table_not_this_sessions_copy(db_session, user):
+    """The replacement is saved by another request, so this session's copy of the row
+    still holds the old ciphertext."""
+    from src.core.db import SessionLocal
+
+    stale = ai_keys.save_key(db_session, user.id, KEY).ciphertext
+    db_session.commit()
+    assert ai_keys.get_row(db_session, user.id).ciphertext == stale  # loaded here
+
+    new = "sk-ant-api03-" + "n" * 40
+    other = SessionLocal()
+    try:
+        ai_keys.save_key(other, user.id, new)
+        other.commit()
+    finally:
+        other.close()
+
+    ai_keys.mark_rejected(db_session, user.id, ciphertext=stale)
+    assert ai_keys.get_row(db_session, user.id).status == "ok"
+    assert ai_keys.read_key(db_session, user.id) == new
+
+
 def test_no_row_reads_as_no_key(db_session, user):
     assert ai_keys.get_row(db_session, user.id) is None
     assert ai_keys.read_key(db_session, user.id) is None
@@ -110,6 +168,31 @@ def test_unreadable_row_reads_as_no_key(db_session, user, monkeypatch, caplog):
     with caplog.at_level("WARNING"):
         assert ai_keys.read_key(db_session, user.id) is None
     assert str(user.id) in caplog.text
+    assert KEY not in caplog.text
+
+
+def test_an_unreadable_key_is_reported_once_per_user(db_session, user, monkeypatch, caplog):
+    """Every page load asks for the key's state, and an unreadable row stays unreadable
+    until the user saves a new key: one line says so, not one per request."""
+    from src.core.security import hash_password
+    from src.models import User
+
+    other = User(email="other@example.com", password_hash=hash_password("y" * 12))
+    db_session.add(other)
+    db_session.commit()
+    for someone in (user, other):
+        ai_keys.save_key(db_session, someone.id, KEY)
+    db_session.commit()
+    monkeypatch.setattr(settings, "ai_key_secret", "rotated")
+
+    with caplog.at_level("WARNING", logger="src.services.ai_keys"):
+        for _ in range(3):
+            assert ai_keys.read_key(db_session, user.id) is None
+            assert ai_keys.read_key(db_session, other.id) is None
+
+    warned = [r.getMessage() for r in caplog.records if r.name == "src.services.ai_keys"]
+    assert len(warned) == 2
+    assert str(user.id) in warned[0] and str(other.id) in warned[1]
     assert KEY not in caplog.text
 
 
