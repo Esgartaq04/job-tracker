@@ -162,6 +162,7 @@ def ingest_from_dom(
         )
         if "llm" in text_outcome.tiers_attempted:
             outcome.tiers_attempted.append("llm")
+        outcome.llm_skipped = outcome.llm_skipped or text_outcome.llm_skipped
         if text_outcome.posting:
             outcome.posting = (
                 text_outcome.posting
@@ -180,7 +181,11 @@ def ingest_from_dom(
         "ingest.completed",
         {"application_id": str(application.id), "ingest_status": application.ingest_status.value},
     )
-    if application.description_raw and not application.description_clean:
+    if (
+        application.description_raw
+        and not application.description_clean
+        and ai.has_key(db, user.id)
+    ):
         queue.enqueue_cleanup(application.id)
     return _from_dom_out(application, duplicate=duplicate)
 
@@ -226,7 +231,11 @@ def ingest_from_text(
     if payload.title:
         application.title = payload.title
     db.commit()
-    if application.description_raw and not application.description_clean:
+    if (
+        application.description_raw
+        and not application.description_clean
+        and ai.has_key(db, user.id)
+    ):
         queue.enqueue_cleanup(application.id)
     return to_out(application, detail=True)
 

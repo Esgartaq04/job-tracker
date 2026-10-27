@@ -238,7 +238,10 @@ def plan(db: Session, user_id, request: AutofillRequest) -> AutofillPlan:
             leftover.append(field)
 
     used_ai = False
-    answers = _ask_model(db, user_id, profile, leftover) if leftover else None
+    ai_skipped_reason = None
+    answers = None
+    if leftover:
+        answers, ai_skipped_reason = _ask_model(db, user_id, profile, leftover)
     if answers is not None:
         used_ai = True
         by_id = {field.id: field for field in leftover}
@@ -256,20 +259,25 @@ def plan(db: Session, user_id, request: AutofillRequest) -> AutofillPlan:
             label = field.label or field.name or field.placeholder or "Unlabelled field"
             needs.append(NeedsUser(field_id=field.id, label=label, reason="not on your resume"))
 
-    return AutofillPlan(assignments=assignments, needs_user=needs, used_ai=used_ai)
+    return AutofillPlan(
+        assignments=assignments,
+        needs_user=needs,
+        used_ai=used_ai,
+        ai_skipped_reason=ai_skipped_reason,
+    )
 
 
 def _ask_model(
     db: Session, user_id, profile: ResumeProfile, fields: list[FormField]
-) -> list[_Answer] | None:
-    """The model's answers, or None when it couldn't be asked (no key, or a key Claude
-    refused, before the call or during it)."""
+) -> tuple[list[_Answer] | None, str | None]:
+    """`(answers, None)`, or `(None, why)` when the model couldn't be asked: no key, or a
+    key Claude refused, before the call or during it. `why` is the message for the user."""
     try:
         client = ai.client_for(db, user_id)
         ai.reserve_call(db, user_id, "autofill")
     except ai.AIUnavailable as exc:
         logger.info("autofill without AI: %s", exc)
-        return None
+        return None, str(exc)
 
     described = [
         {
@@ -296,10 +304,10 @@ def _ask_model(
         )
     except ai.AIUnavailable as exc:
         logger.info("autofill without AI: %s", exc)
-        return None
+        return None, str(exc)
     except Exception as exc:
         if not ai.is_sdk_error(exc):
             raise
         logger.exception("autofill mapping failed")
-        return []
-    return response.parsed_output.answers if response.parsed_output else []
+        return [], None
+    return (response.parsed_output.answers if response.parsed_output else []), None

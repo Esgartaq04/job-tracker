@@ -1,5 +1,7 @@
 """Phase 4b — what the extension's autofill puts where, and what it refuses to answer."""
 
+import uuid
+
 from fastapi.testclient import TestClient
 
 from src.schemas.autofill import Education, ResumeProfile
@@ -212,4 +214,46 @@ def test_a_key_claude_refuses_mid_map_still_fills_by_rule(
 
     assert values(result) == {"d": "esteven@example.com"}
     assert result["used_ai"] is False
+    assert result["ai_skipped_reason"] == ai.REJECTED_KEY
     assert auth_client.get(f"{API}/ai-key").json()["status"] == "rejected"
+
+
+def test_map_without_a_key_says_why(auth_client: TestClient):
+    result = plan(auth_client, [field("d", "Email"), field("c", "Years of Kubernetes experience")])
+
+    assert values(result) == {"d": "esteven@example.com"}
+    assert result["used_ai"] is False
+    assert result["ai_skipped_reason"] == ai.MISSING_KEY
+
+
+def test_map_with_a_key_already_marked_rejected_says_why(
+    auth_client: TestClient, real_keys, db_session
+):
+    from src.services import ai_keys
+
+    auth_client.put(f"{API}/ai-key", json={"api_key": "sk-ant-api03-" + "m" * 40})
+    me = uuid.UUID(auth_client.get(f"{API}/auth/me").json()["id"])
+    ai_keys.mark_rejected(db_session, me)
+
+    result = plan(auth_client, [field("c", "Years of Kubernetes experience")])
+
+    assert result["used_ai"] is False
+    assert result["ai_skipped_reason"] == ai.REJECTED_KEY
+    assert real_keys.requests == [], "a key Claude already refused is not sent again"
+
+
+def test_map_that_used_the_model_has_no_skip_reason(auth_client: TestClient, fake_ai):
+    from src.services.autofill import _Answers
+
+    fake_ai.parsed(_Answers(answers=[]))
+    result = plan(auth_client, [field("c", "Years of Kubernetes experience")])
+
+    assert result["used_ai"] is True
+    assert result["ai_skipped_reason"] is None
+
+
+def test_map_with_nothing_left_for_the_model_has_no_skip_reason(auth_client: TestClient):
+    result = plan(auth_client, [field("d", "Email")])
+
+    assert result["used_ai"] is False
+    assert result["ai_skipped_reason"] is None

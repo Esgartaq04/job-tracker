@@ -70,8 +70,8 @@ def test_throwing_the_posting_away_is_caught():
 # ── the clean-up end to end ─────────────────────────────────────────────────
 
 
-def test_saving_a_job_queues_its_clean_up(auth_client: TestClient, cleanups: list):
-    application = saved_with_description(auth_client)
+def test_saving_a_job_queues_its_clean_up(auth_client: TestClient, cleanups: list, fake_ai):
+    application = saved_with_description(auth_client, fake=fake_ai)
     assert [str(i) for i in cleanups] == [application["id"]]
 
 

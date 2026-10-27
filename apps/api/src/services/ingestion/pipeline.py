@@ -46,6 +46,8 @@ class IngestOutcome:
     error: str | None = None
     ats_vendor: str | None = None
     duration_ms: int = 0
+    #: Tier 4 was due (the cheap tiers left holes) but there was no client to run it.
+    llm_skipped: bool = False
 
     @property
     def status(self) -> IngestStatus:
@@ -72,8 +74,9 @@ def run_pipeline(
     fetch (browser extension), `text` short-circuits everything (manual paste),
     and `hints` are the extension's read of the rendered page — used only to fill
     gaps the tiers left, never to overwrite them. `llm_client` is the user's own
-    (`ai.client_or_none`), and None skips Tier 4. It's the one write: a key Claude
-    refuses mid-call is marked rejected through it."""
+    (`ai.client_or_none`), and None skips Tier 4 — noted in `llm_skipped` when the tier
+    was due. It's the one write: a key Claude refuses mid-call is marked rejected
+    through it."""
     started = time.perf_counter()
     outcome = IngestOutcome()
     use_llm = llm_client is not None
@@ -109,8 +112,11 @@ def run_pipeline(
         )
         # The user typed it, so it counts as a success even without a parsed title.
         outcome.tier_succeeded = "manual"
-        if use_llm and outcome.posting and not outcome.posting.title:
-            absorb("llm", llm.extract(cleaned, url=url, client=llm_client))
+        if outcome.posting and not outcome.posting.title:
+            if use_llm:
+                absorb("llm", llm.extract(cleaned, url=url, client=llm_client))
+            else:
+                outcome.llm_skipped = True
         return finish()
 
     # ── Tier 1: known-host adapter ────────────────────────────────────────
@@ -155,9 +161,12 @@ def run_pipeline(
                 return finish()
 
     # ── Tier 4: LLM structuring over the cleaned text ─────────────────────
-    if page_html and use_llm and not _looks_complete(outcome.posting):
-        cleaned = html_utils.html_to_text(html_utils.main_content_html(page_html))
-        absorb("llm", llm.extract(cleaned, url=url, client=llm_client))
+    if page_html and not _looks_complete(outcome.posting):
+        if use_llm:
+            cleaned = html_utils.html_to_text(html_utils.main_content_html(page_html))
+            absorb("llm", llm.extract(cleaned, url=url, client=llm_client))
+        else:
+            outcome.llm_skipped = True
 
     # ── Extension hints: last, so a real tier always wins ─────────────────
     if hints and not _looks_complete(outcome.posting):
@@ -227,7 +236,12 @@ def ingest_application(db: Session, application_id: uuid.UUID) -> IngestOutcome:
             "application": to_out(application).model_dump(mode="json"),
         },
     )
-    if application.description_raw and not application.description_clean:
+    # Asked after the pipeline, not before: a key Claude refused mid-ingest is no key now.
+    if (
+        application.description_raw
+        and not application.description_clean
+        and ai.has_key(db, user_id)
+    ):
         queue.enqueue_cleanup(application.id)
     return outcome
 
@@ -272,6 +286,12 @@ def apply_outcome(
             "manual": mark_manual,
         }
     )
+    # Says why the card wasn't structured by AI, so the UI can point at the key. Cleared
+    # when a later ingest has one, so the note never outlives the reason.
+    if outcome.llm_skipped:
+        meta["llm"] = "no_key"
+    else:
+        meta.pop("llm", None)
     application.extraction_meta = meta
 
     if posting is None:
