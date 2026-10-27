@@ -72,7 +72,7 @@ def generate(
 ) -> Document:
     description = job_description(application)
     resume_blocks = ai.resume_content(resume, filename)
-    client = ai.client()
+    client = ai.client_for(db, application.user_id)
     ai.reserve_call(db, application.user_id, KIND)
 
     job = (

@@ -80,7 +80,7 @@ class _Answers(BaseModel):
 
 def read_profile(db: Session, user_id, resume: bytes, filename: str | None) -> ResumeProfile:
     blocks = ai.resume_content(resume, filename)
-    client = ai.client()
+    client = ai.client_for(db, user_id)
     ai.reserve_call(db, user_id, "resume_profile")
     response = client.messages.parse(
         model=settings.llm_model,
@@ -262,11 +262,12 @@ def plan(db: Session, user_id, request: AutofillRequest) -> AutofillPlan:
 def _ask_model(
     db: Session, user_id, profile: ResumeProfile, fields: list[FormField]
 ) -> list[_Answer] | None:
-    """The model's answers, or None when it wasn't asked (no key, cap spent)."""
+    """The model's answers, or None when it couldn't be asked (no key, or a key Claude
+    refused, before the call or during it)."""
     try:
-        client = ai.client()
+        client = ai.client_for(db, user_id)
         ai.reserve_call(db, user_id, "autofill")
-    except (ai.AIUnavailable, ai.AIQuotaExceeded) as exc:
+    except ai.AIUnavailable as exc:
         logger.info("autofill without AI: %s", exc)
         return None
 
@@ -293,6 +294,9 @@ def _ask_model(
             messages=[{"role": "user", "content": prompt}],
             output_format=_Answers,
         )
+    except ai.AIUnavailable as exc:
+        logger.info("autofill without AI: %s", exc)
+        return None
     except Exception as exc:
         if not ai.is_sdk_error(exc):
             raise

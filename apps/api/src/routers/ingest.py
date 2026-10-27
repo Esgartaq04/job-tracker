@@ -143,12 +143,12 @@ def ingest_from_dom(
         # wrong when the URL matched a different one.
         return _from_dom_out(application, duplicate=True)
 
-    allow_llm = ai.under_cap(db, user.id)
+    llm_client = ai.client_or_none(db, user.id)
     outcome = pipeline.run_pipeline(
         application.source_url,
         html=payload.html,
         hints=payload.hints.model_dump() if payload.hints else None,
-        allow_llm=allow_llm,
+        llm_client=llm_client,
     )
 
     # LinkedIn and friends defeat the readability pass — it comes back with a nav label
@@ -158,7 +158,7 @@ def ingest_from_dom(
     extracted = outcome.posting.description_markdown if outcome.posting else None
     if fallback and len(fallback) > max(len(extracted or ""), MIN_DESCRIPTION_CHARS):
         text_outcome = pipeline.run_pipeline(
-            application.source_url, text=fallback, allow_llm=allow_llm
+            application.source_url, text=fallback, llm_client=llm_client
         )
         if "llm" in text_outcome.tiers_attempted:
             outcome.tiers_attempted.append("llm")
@@ -216,7 +216,7 @@ def ingest_from_text(
         record_initial_event(db, application)
 
     outcome = pipeline.run_pipeline(
-        application.source_url, text=payload.text, allow_llm=ai.under_cap(db, user.id)
+        application.source_url, text=payload.text, llm_client=ai.client_or_none(db, user.id)
     )
     pipeline.apply_outcome(db, application, outcome, mark_manual=True)
 

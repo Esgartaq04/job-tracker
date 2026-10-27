@@ -66,16 +66,17 @@ def run_pipeline(
     html: str | None = None,
     text: str | None = None,
     hints: dict | None = None,
-    allow_llm: bool = True,
+    llm_client=None,
 ) -> IngestOutcome:
     """Pure extraction: no database, no side effects. `html` short-circuits the
     fetch (browser extension), `text` short-circuits everything (manual paste),
     and `hints` are the extension's read of the rendered page — used only to fill
-    gaps the tiers left, never to overwrite them. `allow_llm=False` skips Tier 4,
-    which is how a spent monthly cap reaches a function with no database."""
+    gaps the tiers left, never to overwrite them. `llm_client` is the user's own
+    (`ai.client_or_none`), and None skips Tier 4. It's the one write: a key Claude
+    refuses mid-call is marked rejected through it."""
     started = time.perf_counter()
     outcome = IngestOutcome()
-    use_llm = allow_llm and llm.enabled()
+    use_llm = llm_client is not None
 
     def finish() -> IngestOutcome:
         outcome.duration_ms = int((time.perf_counter() - started) * 1000)
@@ -109,7 +110,7 @@ def run_pipeline(
         # The user typed it, so it counts as a success even without a parsed title.
         outcome.tier_succeeded = "manual"
         if use_llm and outcome.posting and not outcome.posting.title:
-            absorb("llm", llm.extract(cleaned, url=url))
+            absorb("llm", llm.extract(cleaned, url=url, client=llm_client))
         return finish()
 
     # ── Tier 1: known-host adapter ────────────────────────────────────────
@@ -156,7 +157,7 @@ def run_pipeline(
     # ── Tier 4: LLM structuring over the cleaned text ─────────────────────
     if page_html and use_llm and not _looks_complete(outcome.posting):
         cleaned = html_utils.html_to_text(html_utils.main_content_html(page_html))
-        absorb("llm", llm.extract(cleaned, url=url))
+        absorb("llm", llm.extract(cleaned, url=url, client=llm_client))
 
     # ── Extension hints: last, so a real tier always wins ─────────────────
     if hints and not _looks_complete(outcome.posting):
@@ -198,7 +199,7 @@ def ingest_application(db: Session, application_id: uuid.UUID) -> IngestOutcome:
         {"application_id": str(application.id), "url": application.source_url},
     )
 
-    outcome = run_pipeline(application.source_url, allow_llm=ai.under_cap(db, user_id))
+    outcome = run_pipeline(application.source_url, llm_client=ai.client_or_none(db, user_id))
     apply_outcome(db, application, outcome)
     db.flush()
 

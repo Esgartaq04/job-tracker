@@ -47,12 +47,18 @@ def test_the_image_does_not_carry_the_browser_extra():
     assert "browser" not in dockerfile_extras()
 
 
-def test_tier_4_degrades_instead_of_crashing_when_the_extra_is_missing(monkeypatch):
+def test_tier_4_degrades_instead_of_crashing_when_anthropic_is_missing(
+    monkeypatch, db_session, user
+):
     """The safety net under the test above: a missing `anthropic` must cost the tier,
-    not the request."""
+    not the request, even for a user with a key saved."""
     import builtins
 
+    from src.services import ai, ai_keys
     from src.services.ingestion.tiers import llm
+
+    ai_keys.save_key(db_session, user.id, "sk-ant-api03-" + "p" * 40)
+    db_session.commit()
 
     real_import = builtins.__import__
 
@@ -62,6 +68,8 @@ def test_tier_4_degrades_instead_of_crashing_when_the_extra_is_missing(monkeypat
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", refuse_anthropic)
-    monkeypatch.setattr(llm.settings, "anthropic_api_key", "sk-test", raising=False)
 
-    assert llm.extract("a job posting. " * 100, url="https://example.com/jobs/1") is None
+    client = ai.client_or_none(db_session, user.id)
+    assert client is None
+    text = "a job posting. " * 100
+    assert llm.extract(text, url="https://example.com/jobs/1", client=client) is None

@@ -47,19 +47,12 @@ class LLMExtraction(BaseModel):
     confidence: float = 0.0
 
 
-class LLMUnavailable(RuntimeError):
-    pass
-
-
-def enabled() -> bool:
-    return ai.enabled()
-
-
-def extract(text: str, *, url: str | None = None) -> ExtractedPosting | None:
-    """Structure cleaned posting text. Returns None when the tier is unavailable
-    or the model couldn't find a posting on the page."""
-    if not enabled():
-        logger.debug("LLM tier skipped: no API key configured")
+def extract(text: str, *, url: str | None = None, client=None) -> ExtractedPosting | None:
+    """Structure cleaned posting text with `client`, the user's own (`ai.client_or_none`).
+    Returns None when there's no client, the call failed, or the model couldn't find a
+    posting on the page: a failure here costs the tier, never the save."""
+    if client is None:
+        logger.debug("LLM tier skipped: the user has no usable key")
         return None
 
     cleaned = (text or "").strip()
@@ -67,12 +60,6 @@ def extract(text: str, *, url: str | None = None) -> ExtractedPosting | None:
         return None
     # Cost control: the cheap tiers already stripped chrome; cap what's left.
     cleaned = cleaned[: settings.llm_max_input_chars]
-
-    try:
-        client = ai.client()
-    except ai.AIUnavailable as exc:
-        logger.info("LLM tier skipped: %s", exc)
-        return None
 
     prompt = f"Job posting URL: {url or 'unknown'}\n\n---\n{cleaned}\n---"
     try:
@@ -83,6 +70,10 @@ def extract(text: str, *, url: str | None = None) -> ExtractedPosting | None:
             messages=[{"role": "user", "content": prompt}],
             output_format=LLMExtraction,
         )
+    except ai.AIUnavailable as exc:
+        # Claude refused the key mid-call; `client` has marked it rejected.
+        logger.info("LLM tier skipped: %s", exc)
+        return None
     except Exception as exc:
         if not ai.is_sdk_error(exc):
             raise

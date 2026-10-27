@@ -74,12 +74,8 @@ def run_cleanup_now(application_id: uuid.UUID) -> None:
 
 
 def enqueue_cleanup(application_id: uuid.UUID) -> None:
-    """Queue the AI clean-up of a freshly extracted description (Phase 5a). Without a
-    key there's nothing to do, so nothing is queued."""
-    from src.services import ai
-
-    if not ai.enabled():
-        return
+    """Queue the AI clean-up of a freshly extracted description (Phase 5a). The run
+    loads the owner's key itself and skips when they have none."""
     if settings.redis_url:
         try:
             _enqueue_arq(application_id, job="clean_description")

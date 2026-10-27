@@ -34,11 +34,10 @@ class Settings(BaseSettings):
     fetch_cache_ttl_seconds: int = 60 * 60 * 24
     max_description_chars: int = 200_000
 
-    # Tier 4 — LLM structuring. Disabled unless a key is present.
-    anthropic_api_key: str | None = None
+    # AI features. Each user brings their own Claude key (src/services/ai.py); there is
+    # no server-wide one.
     llm_model: str = "claude-sonnet-5"
     llm_max_input_chars: int = 32_000
-    llm_monthly_call_cap: int = 500
 
     # Seals each user's saved Claude API key at rest (src/core/crypto.py). Required outside
     # local development; locally a fixed fallback keeps `uvicorn` startable with no setup.

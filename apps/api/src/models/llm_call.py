@@ -10,9 +10,8 @@ from src.models.util import utcnow
 
 
 class LLMCall(Base):
-    """One model call made on a user's behalf. Exists so `llm_monthly_call_cap` is a
-    limit rather than a number in a config file (README §8.3: track spend per user
-    from day one, cap it, degrade when it's hit)."""
+    """One model call made on a user's behalf, on their own key. A usage record: the
+    limits are the user's own Claude account's, not the app's."""
 
     __tablename__ = "llm_calls"
     __table_args__ = (sa.Index("ix_llm_calls_user_created", "user_id", "created_at"),)

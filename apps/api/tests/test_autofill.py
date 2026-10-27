@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 
 from src.schemas.autofill import Education, ResumeProfile
+from src.services import ai
 
 API = "/api/v1"
 
@@ -187,9 +188,28 @@ def test_reading_a_resume_returns_a_profile_and_stores_nothing(
     assert db_session.query(Document).count() == 0
 
 
-def test_reading_a_resume_without_a_key_says_why(auth_client: TestClient):
+def test_reading_a_resume_without_a_key_says_where_to_add_one(auth_client: TestClient):
     response = auth_client.post(
         f"{API}/autofill/profile",
         files={"resume": ("resume.pdf", b"%PDF-1.7 resume", "application/pdf")},
     )
-    assert response.status_code == 503
+    assert response.status_code == 428
+    assert response.json()["detail"] == ai.MISSING_KEY
+
+
+def test_a_key_claude_refuses_mid_map_still_fills_by_rule(
+    auth_client: TestClient, real_keys, monkeypatch
+):
+    from tests.conftest import auth_error
+
+    auth_client.put(f"{API}/ai-key", json={"api_key": "sk-ant-api03-" + "m" * 40})
+
+    def refuse(**_):
+        raise auth_error()
+
+    monkeypatch.setattr(real_keys.messages, "parse", refuse)
+    result = plan(auth_client, [field("d", "Email"), field("c", "Years of Kubernetes experience")])
+
+    assert values(result) == {"d": "esteven@example.com"}
+    assert result["used_ai"] is False
+    assert auth_client.get(f"{API}/ai-key").json()["status"] == "rejected"
