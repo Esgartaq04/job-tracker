@@ -59,7 +59,8 @@ function AiKeyPanel() {
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center p-4"
+      // Above the detail drawer (z-40, which opens this dialog) and below the toast (z-50).
+      className="fixed inset-0 z-[45] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="ai-key-title"

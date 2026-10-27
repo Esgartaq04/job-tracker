@@ -71,8 +71,6 @@ export function App() {
         <AccountMenu onSignOut={() => setSignedIn(false)} />
       </header>
 
-      <AiKeyDialog />
-
       <nav className="flex gap-1 border-b-2 border-black/80 bg-surface/70 px-4 pt-2">
         {VIEWS.map((name) => (
           <button
@@ -101,6 +99,7 @@ export function App() {
 
       <Drawer />
       <QuickAddSheet />
+      <AiKeyDialog />
 
       {toast && (
         <div

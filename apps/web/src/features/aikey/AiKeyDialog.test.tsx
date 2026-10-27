@@ -45,6 +45,12 @@ afterEach(() => {
 });
 
 describe("AiKeyDialog", () => {
+  it("layers above the detail drawer (z-40) and below the toast (z-50)", async () => {
+    serve(() => json(EMPTY));
+    renderDialog();
+    expect(await screen.findByRole("dialog")).toHaveClass("z-[45]");
+  });
+
   it("saves, clears the input, and shows only the hint", async () => {
     let state: Record<string, unknown> = EMPTY;
     serve((_, init) => {
