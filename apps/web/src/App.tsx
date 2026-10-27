@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { getToken } from "./api/client";
 import { useServerEvents } from "./api/events";
+import { AiKeyDialog } from "./features/aikey/AiKeyDialog";
 import { AccountMenu } from "./features/auth/AccountMenu";
 import { SignIn } from "./features/auth/SignIn";
 import { Board } from "./features/board/Board";
@@ -69,6 +70,8 @@ export function App() {
         <DimensionSwitcher />
         <AccountMenu onSignOut={() => setSignedIn(false)} />
       </header>
+
+      <AiKeyDialog />
 
       <nav className="flex gap-1 border-b-2 border-black/80 bg-surface/70 px-4 pt-2">
         {VIEWS.map((name) => (

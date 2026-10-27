@@ -208,3 +208,14 @@ export interface CoverLetter {
   created_at: string;
   updated_at: string | null;
 }
+
+/**
+ * The user's saved Claude key as the server describes it. The key itself never comes back;
+ * `hint` is its last four characters, and `status` is what Claude last said about it.
+ */
+export interface AiKeyState {
+  has_key: boolean;
+  hint: string | null;
+  status: "ok" | "rejected" | null;
+  updated_at: string | null;
+}
