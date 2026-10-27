@@ -43,6 +43,4 @@ def ai_errors() -> Iterator[None]:
             raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, ai.OUT_OF_CREDIT) from exc
         # Overload, timeouts, bad requests — logged in full, reported plainly.
         logger.exception("AI call failed")
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY, "The AI service couldn't complete that. Try again shortly."
-        ) from exc
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, ai.AI_CALL_FAILED) from exc

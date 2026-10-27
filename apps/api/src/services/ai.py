@@ -32,6 +32,7 @@ OUT_OF_CREDIT = (
     "Your Claude account is out of credit. Add credit at console.anthropic.com, then try again."
 )
 RATE_LIMITED = "Your Claude account hit its rate limit. Try again in a minute."
+AI_CALL_FAILED = "The AI service couldn't complete that. Try again shortly."
 
 
 class AIUnavailable(RuntimeError):

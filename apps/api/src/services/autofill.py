@@ -69,6 +69,11 @@ MAP_SYSTEM = (
 )
 
 
+#: What the user is told when Claude fails the call for a reason other than their key.
+#: Anything not listed here gets `ai.AI_CALL_FAILED`.
+_SDK_FAILURE_REASONS = {"rate_limit": ai.RATE_LIMITED, "credit": ai.OUT_OF_CREDIT}
+
+
 class _Answer(BaseModel):
     field_id: str
     value: str | None = None
@@ -270,8 +275,9 @@ def plan(db: Session, user_id, request: AutofillRequest) -> AutofillPlan:
 def _ask_model(
     db: Session, user_id, profile: ResumeProfile, fields: list[FormField]
 ) -> tuple[list[_Answer] | None, str | None]:
-    """`(answers, None)`, or `(None, why)` when the model couldn't be asked: no key, or a
-    key Claude refused, before the call or during it. `why` is the message for the user."""
+    """`(answers, None)`, or `(None, why)` when the model couldn't answer: no key, a key
+    Claude refused (before the call or during it), or the user's Claude account out of
+    credit, rate-limited, or otherwise failing. `why` is the message for the user."""
     try:
         client = ai.client_for(db, user_id)
         ai.reserve_call(db, user_id, "autofill")
@@ -306,8 +312,9 @@ def _ask_model(
         logger.info("autofill without AI: %s", exc)
         return None, str(exc)
     except Exception as exc:
-        if not ai.is_sdk_error(exc):
+        kind = ai.sdk_error_kind(exc)
+        if kind is None:
             raise
         logger.exception("autofill mapping failed")
-        return [], None
+        return None, _SDK_FAILURE_REASONS.get(kind, ai.AI_CALL_FAILED)
     return (response.parsed_output.answers if response.parsed_output else []), None

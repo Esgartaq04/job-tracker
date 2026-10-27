@@ -85,6 +85,22 @@ def test_account_limits_are_reported_as_the_users(
     assert response.status_code == status and response.json()["detail"] == detail
 
 
+def test_any_other_claude_failure_is_a_502_with_plain_copy(auth_client, fake_ai, monkeypatch):
+    app = saved_with_description(auth_client, fake=fake_ai)
+    err = anthropic.InternalServerError(
+        "overloaded",
+        response=httpx.Response(500, request=httpx.Request("POST", "https://x")),
+        body=None,
+    )
+
+    def fail(**_):
+        raise err
+
+    monkeypatch.setattr(fake_ai.messages, "create", fail)
+    response = auth_client.post(f"{API}/applications/{app['id']}/clean-description")
+    assert response.status_code == 502 and response.json()["detail"] == ai.AI_CALL_FAILED
+
+
 def test_no_ai_error_is_ever_401(auth_client, real_keys, monkeypatch):
     auth_client.put(f"{API}/ai-key", json={"api_key": ALICE_KEY})
     app = saved_with_description(auth_client, fake=real_keys)

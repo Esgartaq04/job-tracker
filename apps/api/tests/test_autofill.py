@@ -2,6 +2,9 @@
 
 import uuid
 
+import anthropic
+import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from src.schemas.autofill import Education, ResumeProfile
@@ -257,3 +260,65 @@ def test_map_with_nothing_left_for_the_model_has_no_skip_reason(auth_client: Tes
 
     assert result["used_ai"] is False
     assert result["ai_skipped_reason"] is None
+
+
+def _request() -> httpx.Request:
+    return httpx.Request("POST", "https://x")
+
+
+@pytest.mark.parametrize(
+    "make_error,reason",
+    [
+        pytest.param(
+            lambda: anthropic.RateLimitError(
+                "slow down", response=httpx.Response(429, request=_request()), body=None
+            ),
+            ai.RATE_LIMITED,
+            id="rate_limit",
+        ),
+        pytest.param(
+            lambda: anthropic.BadRequestError(
+                "Your credit balance is too low",
+                response=httpx.Response(400, request=_request()),
+                body=None,
+            ),
+            ai.OUT_OF_CREDIT,
+            id="credit",
+        ),
+        pytest.param(
+            lambda: anthropic.InternalServerError(
+                "overloaded", response=httpx.Response(500, request=_request()), body=None
+            ),
+            ai.AI_CALL_FAILED,
+            id="server_error",
+        ),
+        pytest.param(
+            lambda: anthropic.APIConnectionError(request=_request()),
+            ai.AI_CALL_FAILED,
+            id="connection",
+        ),
+    ],
+)
+def test_map_when_the_model_call_fails_says_why(
+    auth_client: TestClient, fake_ai, monkeypatch, make_error, reason
+):
+    def fail(**_):
+        raise make_error()
+
+    monkeypatch.setattr(fake_ai.messages, "parse", fail)
+    result = plan(auth_client, [field("d", "Email"), field("c", "Years of Kubernetes experience")])
+
+    assert values(result) == {"d": "esteven@example.com"}, "the rules still fill what they can"
+    assert result["used_ai"] is False
+    assert result["ai_skipped_reason"] == reason
+
+
+def test_map_does_not_swallow_a_bug_in_the_model_call(
+    auth_client: TestClient, fake_ai, monkeypatch
+):
+    def broken(**_):
+        raise ValueError("a bug, not a Claude error")
+
+    monkeypatch.setattr(fake_ai.messages, "parse", broken)
+    with pytest.raises(ValueError, match="a bug"):
+        plan(auth_client, [field("c", "Years of Kubernetes experience")])
