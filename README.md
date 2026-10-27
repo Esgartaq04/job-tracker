@@ -499,6 +499,8 @@ That's a diff, not a score. It tells the user what to *do*. Extract required ski
 
 At roughly 30 applications/week with a 15% LLM-fallback rate, that's ~5 extraction calls/week — pennies. This stays negligible until multi-user. Track spend per user from day one anyway; add a monthly cap and degrade to Tier 5 (manual) when it's hit.
 
+*Revised:* cost is now per user, on the user's own Claude key. There is no server-wide key and no monthly cap in the app; a user limits spend with a monthly limit on their own key in the Anthropic console.
+
 ---
 
 ## 9. v2 — Email Integration

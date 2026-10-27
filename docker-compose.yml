@@ -37,7 +37,7 @@ services:
       DATABASE_URL: postgresql+psycopg://jobtracker:jobtracker@db:5432/job_tracker
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_KEY_SECRET: ${AI_KEY_SECRET:-}
       CORS_ORIGINS: '["http://localhost:5173"]'
     ports: ["8000:8000"]
     depends_on:
@@ -56,7 +56,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://jobtracker:jobtracker@db:5432/job_tracker
       REDIS_URL: redis://redis:6379/0
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_KEY_SECRET: ${AI_KEY_SECRET:-}
     depends_on:
       api: { condition: service_healthy }
 

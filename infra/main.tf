@@ -105,6 +105,15 @@ resource "google_secret_manager_secret" "db_password" {
   replication { auto {} }
 }
 
+// Seals users' Claude keys. The API and the worker must share one value; changing it
+// makes every stored key unreadable, and users must re-enter theirs.
+resource "google_secret_manager_secret" "ai_key_secret" {
+  secret_id = "job-tracker-ai-key-secret"
+  replication {
+    auto {}
+  }
+}
+
 // Values are set out of band (`gcloud secrets versions add`) so they never enter state.
 data "google_secret_manager_secret_version" "jwt_secret" {
   secret = google_secret_manager_secret.jwt_secret.id
@@ -112,6 +121,10 @@ data "google_secret_manager_secret_version" "jwt_secret" {
 
 data "google_secret_manager_secret_version" "db_password" {
   secret = google_secret_manager_secret.db_password.id
+}
+
+data "google_secret_manager_secret_version" "ai_key_secret" {
+  secret = google_secret_manager_secret.ai_key_secret.id
 }
 
 // ── documents (resume / cover-letter versions) ────────────────────────────
@@ -171,6 +184,10 @@ resource "google_cloud_run_v2_service" "api" {
         value = data.google_secret_manager_secret_version.jwt_secret.secret_data
       }
       env {
+        name  = "AI_KEY_SECRET"
+        value = data.google_secret_manager_secret_version.ai_key_secret.secret_data
+      }
+      env {
         name  = "ENVIRONMENT"
         value = "production"
       }
@@ -224,6 +241,17 @@ resource "google_cloud_run_v2_service" "worker" {
       env {
         name  = "REDIS_URL"
         value = local.redis_url
+      }
+      // Same secret as the API: the worker opens users' keys to run Tier 4 and the
+      // description clean-up. ENVIRONMENT=production makes it refuse to start without the
+      // secret, instead of falling back to the local dev one, which can't open those keys.
+      env {
+        name  = "AI_KEY_SECRET"
+        value = data.google_secret_manager_secret_version.ai_key_secret.secret_data
+      }
+      env {
+        name  = "ENVIRONMENT"
+        value = "production"
       }
 
       volume_mounts {

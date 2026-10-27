@@ -37,6 +37,26 @@ This is the shape the app deploys in: Postgres for real transactions and full-te
 search, Redis for the ingestion queue and the SSE fan-out, and the worker as its own
 process so a slow origin can't tie up an API instance.
 
+## Turning on the AI features
+
+Tier 4 (LLM structuring), the description clean-up, cover letters, and the extension's
+resume reading and field matching all run on **your own Claude API key**. The server has
+no key of its own. Until you add one, the pipeline stops at the cheaper tiers, descriptions
+stay raw, and the other features tell you to add a key.
+
+1. Create a key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
+   Make it a separate key for this app.
+2. In the web app, open 👤 → **Claude API key**.
+3. Paste it in and save. The API checks it with Claude, stores it encrypted, and never
+   shows it again; you'll only see its last four characters.
+4. Optionally, set a monthly spend limit on that key in the console. That limit is the
+   only cap on what the key can spend.
+
+Locally you don't need to configure anything to make this work: with `AI_KEY_SECRET`
+unset the key is sealed with a built-in dev secret, and the API logs a warning saying so.
+That's fine on your own machine. If you do set `AI_KEY_SECRET` and later change it, every
+saved key becomes unreadable and you add yours again.
+
 ## Configuration
 
 Everything is an environment variable; defaults are in `apps/api/src/core/config.py`.
@@ -46,9 +66,8 @@ Everything is an environment variable; defaults are in `apps/api/src/core/config
 | `DATABASE_URL` | `sqlite+pysqlite:///./job_tracker.db` | Use `postgresql+psycopg://…` in any deployed environment |
 | `REDIS_URL` | *(unset)* | When unset, ingestion runs in-process and SSE uses an in-memory hub |
 | `JWT_SECRET` | `dev-secret-change-me` | **Change this before deploying** |
-| `ANTHROPIC_API_KEY` | *(unset)* | Enables every AI feature: Tier 4 (LLM structuring), the description clean-up, cover letters, and the extension's resume reading and field matching. Without it the pipeline stops at Tier 3, descriptions stay raw, and the other three answer 503 with the reason |
-| `LLM_MODEL` | `claude-sonnet-5` | Model used by all of the above |
-| `LLM_MONTHLY_CALL_CAP` | `500` | AI calls per user per month, all features together. Past it, Tier 4 and the clean-up quietly skip and the buttons answer 429 |
+| `AI_KEY_SECRET` | *(unset)* | Seals each user's saved Claude key. Unset is fine locally (built-in dev secret, with a warning in the log). **Required outside `ENVIRONMENT=local`**: the API and worker refuse to start without it. Changing it makes every stored key unreadable |
+| `LLM_MODEL` | `claude-sonnet-5` | Model used by every AI feature |
 | `INGEST_BROWSER_ENABLED` | `0` | Enables Tier 3 (Playwright). Install the `browser` extra first |
 | `STALE_WARN_DAYS` / `STALE_DIM_DAYS` | `14` / `30` | When a card goes amber, then grey |
 | `REMINDER_EMAIL_ENABLED` | `false` | Email digests. Needs a provider — see below |
@@ -87,8 +106,8 @@ npm run typecheck && npm run build
 2. **Tier 0 — JSON-LD.** Fetch the page and look for a schema.org `JobPosting`.
 3. **Tier 2 — Generic HTML.** Readability-style main-content extraction plus `og:` tags.
 4. **Tier 3 — Headless browser.** Off by default; opt in for JS-rendered postings.
-5. **Tier 4 — LLM structuring.** Only when a key is configured and the cheap tiers left
-   holes. Schema-constrained, input truncated, confidence recorded.
+5. **Tier 4 — LLM structuring.** Only when the user has saved a Claude key and the cheap
+   tiers left holes. Schema-constrained, input truncated, confidence recorded.
 6. **Tier 5 — Manual.** Always reachable: `POST /ingest/from-text`, or the drawer's
    "Paste the description yourself".
 
