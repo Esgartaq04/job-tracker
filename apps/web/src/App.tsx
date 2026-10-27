@@ -38,7 +38,11 @@ export function App() {
   useEffect(() => applyPrefs(dimension, pixelFont, backdrop), [dimension, pixelFont, backdrop]);
 
   useEffect(() => {
-    const onSignedOut = () => setSignedIn(false);
+    const onSignedOut = () => {
+      setSignedIn(false);
+      // The store outlives the session; left open, the dialog would greet the next sign-in.
+      useUi.getState().closeAiKeyDialog();
+    };
     window.addEventListener("job-tracker:signed-out", onSignedOut);
     return () => window.removeEventListener("job-tracker:signed-out", onSignedOut);
   }, []);

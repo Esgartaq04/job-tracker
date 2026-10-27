@@ -1,7 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { api } from "../../api/client";
 import {
+  queryKeys,
   useAiKey,
   useCleanDescription,
   useCoverLetter,
@@ -60,6 +62,7 @@ function NotReady({ application }: { application: ApplicationDetail }) {
   const openAiKeyDialog = useUi((state) => state.openAiKeyDialog);
   const { data: aiKey } = useAiKey();
   const canClean = aiUsable(aiKey);
+  const queryClient = useQueryClient();
 
   if (!application.description_raw) {
     return (
@@ -81,7 +84,10 @@ function NotReady({ application }: { application: ApplicationDetail }) {
             ? clean.mutate(undefined, {
                 onError: (error) => {
                   notify(error.message, "error");
-                  if (isAiKeyError(error)) openAiKeyDialog();
+                  if (!isAiKeyError(error)) return;
+                  // The server knows better than our copy of the key's state.
+                  queryClient.invalidateQueries({ queryKey: queryKeys.aiKey });
+                  openAiKeyDialog();
                 },
               })
             : openAiKeyDialog()
@@ -109,6 +115,7 @@ function ResumeForm({
   const notify = useUi((state) => state.notify);
   const openAiKeyDialog = useUi((state) => state.openAiKeyDialog);
   const { data: aiKey } = useAiKey();
+  const queryClient = useQueryClient();
 
   if (!aiUsable(aiKey)) {
     return (
@@ -137,6 +144,8 @@ function ResumeForm({
               // The message is shown by the toast here; any other failure stays inline below.
               if (!isAiKeyError(error)) return;
               notify(error.message, "error");
+              // The server knows better than our copy of the key's state.
+              queryClient.invalidateQueries({ queryKey: queryKeys.aiKey });
               openAiKeyDialog();
             },
           },

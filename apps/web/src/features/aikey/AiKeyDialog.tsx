@@ -111,17 +111,24 @@ function AiKeyPanel() {
           <label htmlFor="ai-key-input" className="block text-sm text-slate-300">
             Claude API key
           </label>
+          {/* A text field masked by CSS, not type="password": browsers offer to save a
+              password field's value, then offer it back on the sign-in form. The data-*
+              attributes ask 1Password, LastPass and Bitwarden to leave it alone too. */}
           <input
             id="ai-key-input"
             ref={inputRef}
-            type="password"
+            type="text"
             autoComplete="off"
             autoCapitalize="off"
             spellCheck={false}
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore
+            data-form-type="other"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             placeholder={hasKey ? "Paste a new key to replace it" : "sk-ant-…"}
-            className="mc-slot mt-1 w-full px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none"
+            className="mc-slot mt-1 w-full px-3 py-2 font-mono text-sm text-slate-100 [-webkit-text-security:disc] placeholder:text-slate-500 focus:border-accent focus:outline-none"
           />
 
           <p className="mt-2 text-xs text-slate-500">
@@ -134,7 +141,8 @@ function AiKeyPanel() {
             >
               console.anthropic.com
             </a>
-            . Tip: make a separate key for this app with a monthly spend limit.
+            . Tip: give this app its own Anthropic workspace with a monthly spend limit, and make
+            its key there.
           </p>
 
           {saveError && (

@@ -1,7 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import type { ApplicationDetail, CleanupMeta } from "../../api/types";
-import { useAiKey, useCleanDescription, useUpdateApplication } from "../../api/hooks";
+import { queryKeys, useAiKey, useCleanDescription, useUpdateApplication } from "../../api/hooks";
 import { useUi } from "../../lib/store";
 import { aiUsable, isAiKeyError } from "../aikey/aiKeyErrors";
 
@@ -20,6 +21,7 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
   const openAiKeyDialog = useUi((state) => state.openAiKeyDialog);
   const { data: aiKey } = useAiKey();
   const aiReady = aiUsable(aiKey);
+  const queryClient = useQueryClient();
 
   const edited = Boolean(application.description_user);
   const hasClean = Boolean(application.description_clean);
@@ -97,7 +99,10 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
                       ? clean.mutate(undefined, {
                           onError: (error) => {
                             notify(error.message, "error");
-                            if (isAiKeyError(error)) openAiKeyDialog();
+                            if (!isAiKeyError(error)) return;
+                            // The server knows better than our copy of the key's state.
+                            queryClient.invalidateQueries({ queryKey: queryKeys.aiKey });
+                            openAiKeyDialog();
                           },
                         })
                       : openAiKeyDialog()

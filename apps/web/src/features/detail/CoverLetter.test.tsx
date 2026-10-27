@@ -33,6 +33,9 @@ function serve(route: Route, aiKey: AiKeyState = USABLE_KEY) {
   vi.stubGlobal("fetch", fetchMock);
 }
 
+const aiKeyFetches = () =>
+  fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/ai-key")).length;
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
@@ -115,12 +118,15 @@ describe("CoverLetter", () => {
     renderTab({ description_raw: "raw", description_clean: "About the role" });
 
     const generate = await screen.findByRole("button", { name: "Generate cover letter" });
+    await waitFor(() => expect(aiKeyFetches()).toBe(1));
     const resume = new File(["%PDF-1.7"], "resume.pdf", { type: "application/pdf" });
     fireEvent.change(screen.getByLabelText(/Your resume/), { target: { files: [resume] } });
     fireEvent.click(generate);
 
     await waitFor(() => expect(useUi.getState().aiKeyDialogOpen).toBe(true));
     expect(useUi.getState().toast).toEqual({ message: missing, tone: "error" });
+    // The key's state is asked for again, so the tab can catch up with the server.
+    await waitFor(() => expect(aiKeyFetches()).toBe(2));
   });
 
   it("only shows the error, without the key dialog, when generation fails for another reason", async () => {

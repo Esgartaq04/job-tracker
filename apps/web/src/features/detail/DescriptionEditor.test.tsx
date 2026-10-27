@@ -29,6 +29,9 @@ function serve(aiKey: AiKeyState = USABLE_KEY, other?: (url: string) => Response
   vi.stubGlobal("fetch", fetchMock);
 }
 
+const aiKeyFetches = () =>
+  fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/ai-key")).length;
+
 beforeEach(() => {
   localStorage.setItem("job-tracker.token", "t");
   useUi.setState({ aiKeyDialogOpen: false, toast: null });
@@ -94,11 +97,14 @@ describe("DescriptionEditor", () => {
       url.endsWith("/clean-description") ? json({ detail: rejected }, 424) : undefined,
     );
     renderEditor({ description_raw: RAW });
+    await waitFor(() => expect(aiKeyFetches()).toBe(1));
 
     fireEvent.click(await screen.findByRole("button", { name: "Clean up" }));
 
     await waitFor(() => expect(useUi.getState().aiKeyDialogOpen).toBe(true));
     expect(useUi.getState().toast).toEqual({ message: rejected, tone: "error" });
+    // The key's state is asked for again, so a stale "Clean up" turns into "Add Claude key".
+    await waitFor(() => expect(aiKeyFetches()).toBe(2));
   });
 
   it("only shows the error, without the key dialog, when clean-up fails for another reason", async () => {

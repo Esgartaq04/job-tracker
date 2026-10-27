@@ -161,8 +161,26 @@ describe("AiKeyDialog", () => {
     expect(link).toHaveAttribute("href", "https://console.anthropic.com/settings/keys");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
-    expect(screen.getByText(/separate key for this app with a monthly spend limit/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Claude API key")).toHaveAttribute("type", "password");
-    expect(screen.getByLabelText("Claude API key")).toHaveAttribute("autocomplete", "off");
+    expect(
+      screen.getByText(
+        /Tip: give this app its own Anthropic workspace with a monthly spend limit, and make its key there\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("masks the key without making it a password a browser would offer to save", async () => {
+    serve(() => json(EMPTY));
+    renderDialog();
+    const input = await screen.findByLabelText("Claude API key");
+    // A password field is what password managers save and later offer on the sign-in form.
+    expect(input).toHaveAttribute("type", "text");
+    expect(input).toHaveClass("[-webkit-text-security:disc]");
+    expect(input).toHaveAttribute("autocomplete", "off");
+    expect(input).toHaveAttribute("autocapitalize", "off");
+    expect(input).toHaveAttribute("spellcheck", "false");
+    expect(input).toHaveAttribute("data-1p-ignore");
+    expect(input).toHaveAttribute("data-lpignore", "true");
+    expect(input).toHaveAttribute("data-bwignore");
+    expect(input).toHaveAttribute("data-form-type", "other");
   });
 });
