@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ApplicationDetail, CoverLetter as Letter } from "../../api/types";
+import type { AiKeyState, ApplicationDetail, CoverLetter as Letter } from "../../api/types";
+import { useUi } from "../../lib/store";
 import { makeApplication } from "../../test/fixtures";
 import { CoverLetter } from "./CoverLetter";
 
@@ -14,11 +15,17 @@ const LETTER: Letter = {
   updated_at: null,
 };
 
+const USABLE_KEY: AiKeyState = { has_key: true, hint: "…TEST", status: "ok", updated_at: null };
+const NO_KEY: AiKeyState = { has_key: false, hint: null, status: null, updated_at: null };
+const REJECTED_KEY: AiKeyState = { ...USABLE_KEY, status: "rejected" };
+
 type Route = (url: string, init?: RequestInit) => Response | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
 
-function serve(route: Route) {
+/** `/ai-key` is answered here so a test only says what is special about its key. */
+function serve(route: Route, aiKey: AiKeyState = USABLE_KEY) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith("/ai-key")) return json(aiKey);
     const response = route(url, init);
     if (!response) throw new Error(`unexpected request: ${url}`);
     return response;
@@ -38,7 +45,10 @@ function renderTab(overrides: Partial<ApplicationDetail>) {
   );
 }
 
-beforeEach(() => localStorage.setItem("job-tracker.token", "t"));
+beforeEach(() => {
+  localStorage.setItem("job-tracker.token", "t");
+  useUi.setState({ aiKeyDialogOpen: false, toast: null });
+});
 afterEach(() => vi.unstubAllGlobals());
 
 describe("CoverLetter", () => {
@@ -49,6 +59,87 @@ describe("CoverLetter", () => {
     expect(screen.getByText(/Waiting for the description to be cleaned up/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Clean up now" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Generate/ })).not.toBeInTheDocument();
+  });
+
+  it("asks for a key instead of a resume when there is none", async () => {
+    serve(() => json({ detail: "No cover letter yet" }, 404), NO_KEY);
+    renderTab({ description_raw: "raw", description_clean: "About the role…" });
+
+    const add = await screen.findByRole("button", { name: "Add Claude key" });
+    expect(screen.getByText("Add your Claude API key to use cover letters.")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/resume/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Generate/ })).not.toBeInTheDocument();
+
+    fireEvent.click(add);
+    expect(useUi.getState().aiKeyDialogOpen).toBe(true);
+  });
+
+  it("asks for a new key instead of a resume when Claude rejected the saved one", async () => {
+    serve(() => json({ detail: "No cover letter yet" }, 404), REJECTED_KEY);
+    renderTab({ description_raw: "raw", description_clean: "About the role…" });
+
+    expect(await screen.findByRole("button", { name: "Add Claude key" })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/resume/i)).not.toBeInTheDocument();
+  });
+
+  it("lets you back out of regenerating when there is no key", async () => {
+    serve((url) => (url.endsWith("/cover-letter") ? json(LETTER) : undefined), NO_KEY);
+    renderTab({ description_raw: "raw", description_clean: "About the role" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
+    expect(await screen.findByRole("button", { name: "Add Claude key" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByDisplayValue(/I built a ledger/)).toBeInTheDocument();
+  });
+
+  it("turns Clean up now into Add Claude key to clean up when there is no key", async () => {
+    serve(() => json({ detail: "No cover letter yet" }, 404), NO_KEY);
+    renderTab({ description_raw: "Apply now. About the role…" });
+
+    const add = await screen.findByRole("button", { name: "Add Claude key to clean up" });
+    expect(screen.queryByRole("button", { name: "Clean up now" })).not.toBeInTheDocument();
+
+    fireEvent.click(add);
+    expect(useUi.getState().aiKeyDialogOpen).toBe(true);
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("shows the error and opens the key dialog when the server says the key is missing", async () => {
+    const missing = "Add your Claude API key (👤 → Claude API key) to use this.";
+    serve((url, init) => {
+      if (url.endsWith("/cover-letter") && init?.method === "POST") return json({ detail: missing }, 428);
+      if (url.endsWith("/cover-letter")) return json({ detail: "No cover letter yet" }, 404);
+      return undefined;
+    });
+    renderTab({ description_raw: "raw", description_clean: "About the role" });
+
+    const generate = await screen.findByRole("button", { name: "Generate cover letter" });
+    const resume = new File(["%PDF-1.7"], "resume.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText(/Your resume/), { target: { files: [resume] } });
+    fireEvent.click(generate);
+
+    await waitFor(() => expect(useUi.getState().aiKeyDialogOpen).toBe(true));
+    expect(useUi.getState().toast).toEqual({ message: missing, tone: "error" });
+  });
+
+  it("only shows the error, without the key dialog, when generation fails for another reason", async () => {
+    serve((url, init) => {
+      if (url.endsWith("/cover-letter") && init?.method === "POST") {
+        return json({ detail: "Your Claude account is out of credit." }, 402);
+      }
+      if (url.endsWith("/cover-letter")) return json({ detail: "No cover letter yet" }, 404);
+      return undefined;
+    });
+    renderTab({ description_raw: "raw", description_clean: "About the role" });
+
+    const generate = await screen.findByRole("button", { name: "Generate cover letter" });
+    const resume = new File(["%PDF-1.7"], "resume.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText(/Your resume/), { target: { files: [resume] } });
+    fireEvent.click(generate);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("out of credit");
+    expect(useUi.getState().aiKeyDialogOpen).toBe(false);
   });
 
   it("uploads the resume with the request and shows the letter it gets back", async () => {

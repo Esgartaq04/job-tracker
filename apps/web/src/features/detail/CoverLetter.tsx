@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { api } from "../../api/client";
 import {
+  useAiKey,
   useCleanDescription,
   useCoverLetter,
   useEditCoverLetter,
@@ -9,6 +10,8 @@ import {
 } from "../../api/hooks";
 import type { ApplicationDetail, CleanupMeta } from "../../api/types";
 import { useUi } from "../../lib/store";
+import { AddKeyPrompt } from "../aikey/AddKeyPrompt";
+import { aiUsable, isAiKeyError } from "../aikey/aiKeyErrors";
 
 const RESUME_TYPES =
   ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -54,6 +57,9 @@ export function CoverLetter({ application }: { application: ApplicationDetail })
 function NotReady({ application }: { application: ApplicationDetail }) {
   const clean = useCleanDescription(application.id);
   const notify = useUi((state) => state.notify);
+  const openAiKeyDialog = useUi((state) => state.openAiKeyDialog);
+  const { data: aiKey } = useAiKey();
+  const canClean = aiUsable(aiKey);
 
   if (!application.description_raw) {
     return (
@@ -70,10 +76,19 @@ function NotReady({ application }: { application: ApplicationDetail }) {
       <button
         type="button"
         disabled={clean.isPending}
-        onClick={() => clean.mutate(undefined, { onError: (error) => notify(error.message, "error") })}
+        onClick={() =>
+          canClean
+            ? clean.mutate(undefined, {
+                onError: (error) => {
+                  notify(error.message, "error");
+                  if (isAiKeyError(error)) openAiKeyDialog();
+                },
+              })
+            : openAiKeyDialog()
+        }
         className="mc-button mt-3 px-3 py-1.5 text-sm text-slate-200 disabled:opacity-60"
       >
-        {clean.isPending ? "Cleaning…" : "Clean up now"}
+        {clean.isPending ? "Cleaning…" : canClean ? "Clean up now" : "Add Claude key to clean up"}
       </button>
     </Empty>
   );
@@ -91,13 +106,41 @@ function ResumeForm({
   const [resume, setResume] = useState<File | null>(null);
   const [notes, setNotes] = useState("");
   const generate = useGenerateCoverLetter(application.id);
+  const notify = useUi((state) => state.notify);
+  const openAiKeyDialog = useUi((state) => state.openAiKeyDialog);
+  const { data: aiKey } = useAiKey();
+
+  if (!aiUsable(aiKey)) {
+    return (
+      <div className="space-y-3">
+        <AddKeyPrompt what="cover letters" />
+        {regenerating && (
+          <button type="button" onClick={onDone} className="text-sm text-slate-400 hover:text-slate-200">
+            Cancel
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <form
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
-        if (resume) generate.mutate({ resume, notes }, { onSuccess: onDone });
+        if (!resume) return;
+        generate.mutate(
+          { resume, notes },
+          {
+            onSuccess: onDone,
+            onError: (error) => {
+              // The message is shown by the toast here; any other failure stays inline below.
+              if (!isAiKeyError(error)) return;
+              notify(error.message, "error");
+              openAiKeyDialog();
+            },
+          },
+        );
       }}
     >
       <div>
@@ -127,7 +170,7 @@ function ResumeForm({
         />
       </div>
 
-      {generate.isError && (
+      {generate.isError && !isAiKeyError(generate.error) && (
         <p role="alert" className="text-sm text-stale-warn">
           {generate.error.message}
         </p>
