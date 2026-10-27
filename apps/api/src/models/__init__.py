@@ -12,6 +12,7 @@ from src.models.llm_call import LLMCall
 from src.models.status_event import StatusEvent
 from src.models.tag import ApplicationTag, Tag
 from src.models.user import User
+from src.models.user_ai_key import UserAIKey
 
 __all__ = [
     "BOARD_ORDER",
@@ -28,4 +29,5 @@ __all__ = [
     "StatusEvent",
     "Tag",
     "User",
+    "UserAIKey",
 ]
