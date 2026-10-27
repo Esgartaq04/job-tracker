@@ -11,13 +11,13 @@ _tmpdir = tempfile.mkdtemp(prefix="job-tracker-tests-")
 os.environ.setdefault("DATABASE_URL", f"sqlite+pysqlite:///{_tmpdir}/test.db")
 os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.pop("REDIS_URL", None)
-os.environ.pop("ANTHROPIC_API_KEY", None)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
 from src.core.db import Base, engine  # noqa: E402
 from src.main import app  # noqa: E402
 from src.models import User  # noqa: E402
+from src.routers import ai_key  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -59,6 +59,13 @@ def _clean_tables() -> Iterator[None]:
     with engine.begin() as connection:
         for table in reversed(Base.metadata.sorted_tables):
             connection.execute(table.delete())
+
+
+@pytest.fixture(autouse=True)
+def _reset_key_attempts() -> None:
+    """The /ai-key rate limit lives in process memory, so it would carry from one test
+    into the next."""
+    ai_key.attempts.reset()
 
 
 @pytest.fixture(autouse=True)
@@ -136,6 +143,8 @@ class FakeAI:
 
         self._ns = SimpleNamespace
         self.requests: list[dict] = []
+        #: The key each client was built with, in order.
+        self.keys: list[str] = []
         self._replies: list = []
         self.messages = SimpleNamespace(create=self._create, parse=self._parse)
 
@@ -165,9 +174,45 @@ class FakeAI:
 
 @pytest.fixture
 def fake_ai(monkeypatch) -> FakeAI:
-    from src.core.config import settings
+    """Every user has a key, and every client is this fake."""
+    from src.services import ai
 
     fake = FakeAI()
-    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
-    monkeypatch.setattr("src.services.ai.client", lambda: fake)
+    monkeypatch.setattr(
+        "src.services.ai.user_key", lambda db, user_id: ai.SavedKey("sk-ant-test-0000", None)
+    )
+
+    def build(api_key):
+        fake.keys.append(api_key)
+        return fake
+
+    monkeypatch.setattr("src.services.ai._build_client", build)
+    return fake
+
+
+def auth_error():
+    """What the SDK raises when Claude refuses a key."""
+    import anthropic
+    import httpx
+
+    return anthropic.AuthenticationError(
+        "invalid x-api-key",
+        response=httpx.Response(401, request=httpx.Request("POST", "https://x")),
+        body=None,
+    )
+
+
+@pytest.fixture
+def real_keys(monkeypatch) -> FakeAI:
+    """Real key storage, fake transport: records which key each client was built with."""
+    from src.services import ai_keys
+
+    fake = FakeAI()
+
+    def build(api_key):
+        fake.keys.append(api_key)
+        return fake
+
+    monkeypatch.setattr("src.services.ai._build_client", build)
+    monkeypatch.setattr(ai_keys, "_models_list", lambda api_key: None)
     return fake

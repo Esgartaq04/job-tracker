@@ -5,7 +5,8 @@ import io
 from fastapi.testclient import TestClient
 
 from src.models import Document
-from tests.test_ai import NOISY, POSTING, make_docx, saved_with_description
+from src.services import ai
+from tests.test_ai import POSTING, make_docx, saved_with_description
 
 API = "/api/v1"
 PDF = b"%PDF-1.7\n% a resume that only the model will read"
@@ -16,7 +17,7 @@ LETTER = (
 
 
 def cleaned_listing(client: TestClient, fake_ai) -> dict:
-    application = saved_with_description(client)
+    application = saved_with_description(client, fake=fake_ai)
     fake_ai.reply(POSTING)
     response = client.post(f"{API}/applications/{application['id']}/clean-description")
     assert response.json()["description_clean"]
@@ -108,14 +109,14 @@ def test_edits_are_saved_and_the_docx_downloads(auth_client: TestClient, fake_ai
 
 
 def test_a_letter_waits_for_the_clean_up(auth_client: TestClient, fake_ai):
-    application = saved_with_description(auth_client)
+    application = saved_with_description(auth_client, fake=fake_ai)
     response = generate(auth_client, application["id"])
     assert response.status_code == 409
     assert "cleaned up" in response.json()["detail"]
 
 
 def test_a_declined_clean_up_falls_back_to_the_original(auth_client: TestClient, fake_ai):
-    application = saved_with_description(auth_client)
+    application = saved_with_description(auth_client, fake=fake_ai)
     fake_ai.reply("Totally different words that share nothing with the posting at all.")
     auth_client.post(f"{API}/applications/{application['id']}/clean-description")
 
@@ -145,6 +146,15 @@ def test_someone_elses_listing_is_not_found(auth_client: TestClient, fake_ai, cl
 
 
 def test_there_is_no_letter_until_one_is_generated(auth_client: TestClient):
-    application = saved_with_description(auth_client, NOISY, ai_on=False)
+    application = saved_with_description(auth_client)
     response = auth_client.get(f"{API}/applications/{application['id']}/cover-letter")
     assert response.status_code == 404
+
+
+def test_a_letter_without_a_key_says_where_to_add_one(auth_client: TestClient):
+    application = saved_with_description(auth_client)
+    # The user's own description, so the letter isn't waiting on a clean-up.
+    auth_client.patch(f"{API}/applications/{application['id']}", json={"description_user": POSTING})
+    response = generate(auth_client, application["id"])
+    assert response.status_code == 428
+    assert response.json()["detail"] == ai.MISSING_KEY

@@ -47,7 +47,9 @@ export function Drawer() {
     panelRef.current?.focus();
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeDrawer();
+      // The key dialog opens over the drawer and closes on this same Escape. Read the flag
+      // now, not from a closure: the first press closes the dialog, the next the drawer.
+      if (event.key === "Escape" && !useUi.getState().aiKeyDialogOpen) closeDrawer();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => {

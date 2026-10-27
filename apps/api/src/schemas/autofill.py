@@ -93,3 +93,7 @@ class AutofillPlan(BaseModel):
     needs_user: list[NeedsUser]
     #: Whether the model was asked about the fields no rule could place.
     used_ai: bool = False
+    #: Why it wasn't, when there were fields to ask about: no key saved, one Claude
+    #: refused, or the user's Claude account out of credit, rate-limited, or failing. The
+    #: message tells the user what to do, and the extension shows it as is.
+    ai_skipped_reason: str | None = None

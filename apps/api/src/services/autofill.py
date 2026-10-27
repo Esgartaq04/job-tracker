@@ -69,6 +69,15 @@ MAP_SYSTEM = (
 )
 
 
+#: What the user is told when Claude fails the call for a reason other than their key.
+#: Anything not listed here gets `ai.AI_CALL_FAILED`.
+_SDK_FAILURE_REASONS = {
+    "rate_limit": ai.RATE_LIMITED,
+    "credit": ai.OUT_OF_CREDIT,
+    "spend_limit": ai.SPEND_LIMIT,
+}
+
+
 class _Answer(BaseModel):
     field_id: str
     value: str | None = None
@@ -80,7 +89,7 @@ class _Answers(BaseModel):
 
 def read_profile(db: Session, user_id, resume: bytes, filename: str | None) -> ResumeProfile:
     blocks = ai.resume_content(resume, filename)
-    client = ai.client()
+    client = ai.client_for(db, user_id)
     ai.reserve_call(db, user_id, "resume_profile")
     response = client.messages.parse(
         model=settings.llm_model,
@@ -238,7 +247,10 @@ def plan(db: Session, user_id, request: AutofillRequest) -> AutofillPlan:
             leftover.append(field)
 
     used_ai = False
-    answers = _ask_model(db, user_id, profile, leftover) if leftover else None
+    ai_skipped_reason = None
+    answers = None
+    if leftover:
+        answers, ai_skipped_reason = _ask_model(db, user_id, profile, leftover)
     if answers is not None:
         used_ai = True
         by_id = {field.id: field for field in leftover}
@@ -256,19 +268,26 @@ def plan(db: Session, user_id, request: AutofillRequest) -> AutofillPlan:
             label = field.label or field.name or field.placeholder or "Unlabelled field"
             needs.append(NeedsUser(field_id=field.id, label=label, reason="not on your resume"))
 
-    return AutofillPlan(assignments=assignments, needs_user=needs, used_ai=used_ai)
+    return AutofillPlan(
+        assignments=assignments,
+        needs_user=needs,
+        used_ai=used_ai,
+        ai_skipped_reason=ai_skipped_reason,
+    )
 
 
 def _ask_model(
     db: Session, user_id, profile: ResumeProfile, fields: list[FormField]
-) -> list[_Answer] | None:
-    """The model's answers, or None when it wasn't asked (no key, cap spent)."""
+) -> tuple[list[_Answer] | None, str | None]:
+    """`(answers, None)`, or `(None, why)` when the model couldn't answer: no key, a key
+    Claude refused (before the call or during it), or the user's Claude account out of
+    credit, rate-limited, or otherwise failing. `why` is the message for the user."""
     try:
-        client = ai.client()
+        client = ai.client_for(db, user_id)
         ai.reserve_call(db, user_id, "autofill")
-    except (ai.AIUnavailable, ai.AIQuotaExceeded) as exc:
+    except ai.AIUnavailable as exc:
         logger.info("autofill without AI: %s", exc)
-        return None
+        return None, str(exc)
 
     described = [
         {
@@ -293,9 +312,18 @@ def _ask_model(
             messages=[{"role": "user", "content": prompt}],
             output_format=_Answers,
         )
+    except ai.AIUnavailable as exc:
+        logger.info("autofill without AI: %s", exc)
+        return None, str(exc)
     except Exception as exc:
-        if not ai.is_sdk_error(exc):
+        kind = ai.sdk_error_kind(exc)
+        if kind is None:
             raise
-        logger.exception("autofill mapping failed")
-        return []
-    return response.parsed_output.answers if response.parsed_output else []
+        reason = _SDK_FAILURE_REASONS.get(kind, ai.AI_CALL_FAILED)
+        if kind in ai.ACCOUNT_LIMITS:
+            # The user's own account's limit, as `ai_errors` treats it: a line, no trace.
+            logger.info("autofill without AI: %s", reason)
+        else:
+            logger.exception("autofill mapping failed")
+        return None, reason
+    return (response.parsed_output.answers if response.parsed_output else []), None

@@ -143,12 +143,12 @@ def ingest_from_dom(
         # wrong when the URL matched a different one.
         return _from_dom_out(application, duplicate=True)
 
-    allow_llm = ai.under_cap(db, user.id)
+    llm_client = ai.client_or_none(db, user.id)
     outcome = pipeline.run_pipeline(
         application.source_url,
         html=payload.html,
         hints=payload.hints.model_dump() if payload.hints else None,
-        allow_llm=allow_llm,
+        llm_client=llm_client,
     )
 
     # LinkedIn and friends defeat the readability pass — it comes back with a nav label
@@ -158,10 +158,11 @@ def ingest_from_dom(
     extracted = outcome.posting.description_markdown if outcome.posting else None
     if fallback and len(fallback) > max(len(extracted or ""), MIN_DESCRIPTION_CHARS):
         text_outcome = pipeline.run_pipeline(
-            application.source_url, text=fallback, allow_llm=allow_llm
+            application.source_url, text=fallback, llm_client=llm_client
         )
         if "llm" in text_outcome.tiers_attempted:
             outcome.tiers_attempted.append("llm")
+        outcome.llm_skipped = outcome.llm_skipped or text_outcome.llm_skipped
         if text_outcome.posting:
             outcome.posting = (
                 text_outcome.posting
@@ -180,7 +181,11 @@ def ingest_from_dom(
         "ingest.completed",
         {"application_id": str(application.id), "ingest_status": application.ingest_status.value},
     )
-    if application.description_raw and not application.description_clean:
+    if (
+        application.description_raw
+        and not application.description_clean
+        and ai.has_key(db, user.id)
+    ):
         queue.enqueue_cleanup(application.id)
     return _from_dom_out(application, duplicate=duplicate)
 
@@ -216,7 +221,7 @@ def ingest_from_text(
         record_initial_event(db, application)
 
     outcome = pipeline.run_pipeline(
-        application.source_url, text=payload.text, allow_llm=ai.under_cap(db, user.id)
+        application.source_url, text=payload.text, llm_client=ai.client_or_none(db, user.id)
     )
     pipeline.apply_outcome(db, application, outcome, mark_manual=True)
 
@@ -226,7 +231,11 @@ def ingest_from_text(
     if payload.title:
         application.title = payload.title
     db.commit()
-    if application.description_raw and not application.description_clean:
+    if (
+        application.description_raw
+        and not application.description_clean
+        and ai.has_key(db, user.id)
+    ):
         queue.enqueue_cleanup(application.id)
     return to_out(application, detail=True)
 

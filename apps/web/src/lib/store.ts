@@ -11,6 +11,8 @@ interface UiState {
   query: string;
   collapsed: Record<string, boolean>;
   toast: { message: string; tone: "info" | "error" } | null;
+  /** Only whether the Claude key dialog is open; the key itself never enters this store. */
+  aiKeyDialogOpen: boolean;
 
   setView: (view: ViewName) => void;
   openDrawer: (id: string) => void;
@@ -19,6 +21,8 @@ interface UiState {
   toggleColumn: (status: AppStatus) => void;
   notify: (message: string, tone?: "info" | "error") => void;
   dismissToast: () => void;
+  openAiKeyDialog: () => void;
+  closeAiKeyDialog: () => void;
 }
 
 /** Server data lives in TanStack Query; this store is only UI state. */
@@ -30,6 +34,7 @@ export const useUi = create<UiState>((set) => ({
   // and letting them dominate the board is demoralising (README §7.1).
   collapsed: Object.fromEntries(TERMINAL_STATUSES.map((status) => [status, true])),
   toast: null,
+  aiKeyDialogOpen: false,
 
   setView: (view) => set({ view }),
   openDrawer: (drawerId) => set({ drawerId }),
@@ -39,4 +44,6 @@ export const useUi = create<UiState>((set) => ({
     set((state) => ({ collapsed: { ...state.collapsed, [status]: !state.collapsed[status] } })),
   notify: (message, tone = "info") => set({ toast: { message, tone } }),
   dismissToast: () => set({ toast: null }),
+  openAiKeyDialog: () => set({ aiKeyDialogOpen: true }),
+  closeAiKeyDialog: () => set({ aiKeyDialogOpen: false }),
 }));

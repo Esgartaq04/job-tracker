@@ -1,12 +1,11 @@
 """Phase 5a — the description clean-up — and the plumbing every AI feature shares:
-the monthly cap and resume intake."""
+resume intake."""
 
 import io
 
 import pytest
 from fastapi.testclient import TestClient
 
-from src.core.config import settings
 from src.services import ai
 from src.services.ai_text import CLEANUP_PROMPT, faithful
 
@@ -28,12 +27,12 @@ NOISY = (
 )
 
 
-def saved_with_description(client: TestClient, text: str = NOISY, ai_on: bool = True) -> dict:
-    """A card with a scraped-looking description. With a key configured, saving pasted
-    text also runs Tier 4 — answered here with "nothing found" so the tests below only
-    see the clean-up call."""
-    if ai_on and ai.enabled():
-        ai.client().parsed(None)
+def saved_with_description(client: TestClient, text: str = NOISY, fake=None) -> dict:
+    """A card with a scraped-looking description. When the user has a key (`fake` is
+    their client), saving pasted text also runs Tier 4 — answered here with "nothing
+    found" so the tests below only see the clean-up call."""
+    if fake is not None:
+        fake.parsed(None)
     response = client.post(
         f"{API}/ingest/from-text",
         json={"text": text, "company": "Ramp", "title": "Backend Intern"},
@@ -71,13 +70,13 @@ def test_throwing_the_posting_away_is_caught():
 # ── the clean-up end to end ─────────────────────────────────────────────────
 
 
-def test_saving_a_job_queues_its_clean_up(auth_client: TestClient, cleanups: list):
-    application = saved_with_description(auth_client)
+def test_saving_a_job_queues_its_clean_up(auth_client: TestClient, cleanups: list, fake_ai):
+    application = saved_with_description(auth_client, fake=fake_ai)
     assert [str(i) for i in cleanups] == [application["id"]]
 
 
 def test_a_faithful_clean_up_becomes_the_description(auth_client: TestClient, fake_ai):
-    application = saved_with_description(auth_client)
+    application = saved_with_description(auth_client, fake=fake_ai)
     fake_ai.reply("## About the role\n\n" + POSTING)
 
     response = auth_client.post(f"{API}/applications/{application['id']}/clean-description")
@@ -96,7 +95,7 @@ def test_a_faithful_clean_up_becomes_the_description(auth_client: TestClient, fa
 
 
 def test_a_reworded_clean_up_is_thrown_away(auth_client: TestClient, fake_ai):
-    application = saved_with_description(auth_client)
+    application = saved_with_description(auth_client, fake=fake_ai)
     fake_ai.reply("This is an exciting opportunity to build payment systems with Go and Kafka!")
 
     body = auth_client.post(f"{API}/applications/{application['id']}/clean-description").json()
@@ -106,7 +105,7 @@ def test_a_reworded_clean_up_is_thrown_away(auth_client: TestClient, fake_ai):
 
 
 def test_a_users_edit_still_wins_over_the_clean_up(auth_client: TestClient, fake_ai):
-    application = saved_with_description(auth_client)
+    application = saved_with_description(auth_client, fake=fake_ai)
     fake_ai.reply(POSTING)
     auth_client.post(f"{API}/applications/{application['id']}/clean-description")
 
@@ -123,34 +122,12 @@ def test_the_background_clean_up_updates_the_card(auth_client: TestClient, fake_
 
     from src.services.ai_text import run_cleanup
 
-    application = saved_with_description(auth_client)
+    application = saved_with_description(auth_client, fake=fake_ai)
     fake_ai.reply(POSTING)
     run_cleanup(db_session, uuid.UUID(application["id"]))
 
     body = auth_client.get(f"{API}/applications/{application['id']}").json()
     assert body["description_clean"].startswith("About the role")
-
-
-def test_clean_up_without_a_key_says_why(auth_client: TestClient):
-    application = saved_with_description(auth_client)
-    response = auth_client.post(f"{API}/applications/{application['id']}/clean-description")
-    assert response.status_code == 503
-    assert "ANTHROPIC_API_KEY" in response.json()["detail"]
-
-
-def test_the_monthly_cap_is_enforced(auth_client: TestClient, fake_ai, monkeypatch):
-    first = saved_with_description(auth_client)
-    second = saved_with_description(auth_client, NOISY + " Second posting.")
-    # Both saves ran Tier 4, and those count too: one call left.
-    monkeypatch.setattr(settings, "llm_monthly_call_cap", 3)
-
-    fake_ai.reply(POSTING)
-    allowed = auth_client.post(f"{API}/applications/{first['id']}/clean-description")
-    assert allowed.status_code == 200
-
-    response = auth_client.post(f"{API}/applications/{second['id']}/clean-description")
-    assert response.status_code == 429
-    assert "reset" in response.json()["detail"]
 
 
 # ── resume intake ───────────────────────────────────────────────────────────

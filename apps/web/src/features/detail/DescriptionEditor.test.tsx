@@ -1,18 +1,48 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ApplicationDetail } from "../../api/types";
+import type { AiKeyState, ApplicationDetail } from "../../api/types";
+import { useUi } from "../../lib/store";
 import { makeApplication } from "../../test/fixtures";
 import { DescriptionEditor } from "./DescriptionEditor";
 
 const RAW = "Skip to content\nApply now\nAbout the role\nBuild the ledger.\n© Example";
 const CLEAN = "## About the role\nBuild the ledger.";
 
+const USABLE_KEY: AiKeyState = { has_key: true, hint: "…TEST", status: "ok", updated_at: null };
+const NO_KEY: AiKeyState = { has_key: false, hint: null, status: null, updated_at: null };
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+let fetchMock: ReturnType<typeof vi.fn>;
+
+/** Answers `/ai-key` itself; `other` handles whatever else a test sends. */
+function serve(aiKey: AiKeyState = USABLE_KEY, other?: (url: string) => Response | undefined) {
+  fetchMock = vi.fn(async (url: string) => {
+    if (url.endsWith("/ai-key")) return json(aiKey);
+    const response = other?.(url);
+    if (!response) throw new Error(`unexpected request: ${url}`);
+    return response;
+  });
+  vi.stubGlobal("fetch", fetchMock);
+}
+
+const aiKeyFetches = () =>
+  fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/ai-key")).length;
+
+beforeEach(() => {
+  localStorage.setItem("job-tracker.token", "t");
+  useUi.setState({ aiKeyDialogOpen: false, toast: null });
+  serve();
+});
+afterEach(() => vi.unstubAllGlobals());
+
 function renderEditor(overrides: Partial<ApplicationDetail>) {
   const application = { ...makeApplication({ id: "a1", ...overrides }), events: [] };
   render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <DescriptionEditor application={application} />
     </QueryClientProvider>,
   );
@@ -41,6 +71,54 @@ describe("DescriptionEditor", () => {
     expect(screen.getByRole("button", { name: "Clean up" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Show original" })).not.toBeInTheDocument();
     expect(screen.getByText(/AI clean-up discarded \(it reworded the description\)/)).toBeInTheDocument();
+  });
+
+  it("turns Clean up into Add Claude key without a key", async () => {
+    serve(NO_KEY);
+    renderEditor({ description_raw: RAW });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add Claude key to clean up" }));
+
+    expect(useUi.getState().aiKeyDialogOpen).toBe(true);
+    expect(screen.queryByRole("button", { name: "Clean up" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("clean-description"))).toBe(false);
+  });
+
+  it("turns Clean up into Add Claude key when Claude rejected the saved key", async () => {
+    serve({ ...USABLE_KEY, status: "rejected" });
+    renderEditor({ description_raw: RAW });
+
+    expect(await screen.findByRole("button", { name: "Add Claude key to clean up" })).toBeInTheDocument();
+  });
+
+  it("shows the error and opens the key dialog when the server rejects the key", async () => {
+    const rejected = "Claude rejected your saved key. Replace it under 👤 → Claude API key.";
+    serve(USABLE_KEY, (url) =>
+      url.endsWith("/clean-description") ? json({ detail: rejected }, 424) : undefined,
+    );
+    renderEditor({ description_raw: RAW });
+    await waitFor(() => expect(aiKeyFetches()).toBe(1));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Clean up" }));
+
+    await waitFor(() => expect(useUi.getState().aiKeyDialogOpen).toBe(true));
+    expect(useUi.getState().toast).toEqual({ message: rejected, tone: "error" });
+    // The key's state is asked for again, so a stale "Clean up" turns into "Add Claude key".
+    await waitFor(() => expect(aiKeyFetches()).toBe(2));
+  });
+
+  it("only shows the error, without the key dialog, when clean-up fails for another reason", async () => {
+    serve(USABLE_KEY, (url) =>
+      url.endsWith("/clean-description") ? json({ detail: "Claude is rate-limited." }, 429) : undefined,
+    );
+    renderEditor({ description_raw: RAW });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Clean up" }));
+
+    await waitFor(() =>
+      expect(useUi.getState().toast).toEqual({ message: "Claude is rate-limited.", tone: "error" }),
+    );
+    expect(useUi.getState().aiKeyDialogOpen).toBe(false);
   });
 
   it("puts the user's own edit above both", () => {

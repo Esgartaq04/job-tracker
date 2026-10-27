@@ -210,10 +210,10 @@ async function fill(tab) {
     }
 
     render(filled, needs);
-    status(
-      `Filled ${filled.length} field${filled.length === 1 ? "" : "s"}. Review the form, then submit it yourself.`,
-      "ok",
-    );
+    // When the AI step was skipped (no key, or one Claude refused), say why: the message
+    // already says what to do about it.
+    const done = `Filled ${filled.length} field${filled.length === 1 ? "" : "s"}. Review the form, then submit it yourself.`;
+    status(plan.ai_skipped_reason ? `${done} ${plan.ai_skipped_reason}` : done, "ok");
   } catch (error) {
     status(error.message, "error");
   } finally {

@@ -57,8 +57,9 @@ than in the code.
 ## Deployment readiness ✅ (not yet deployed)
 
 The four changes [`DEPLOYMENT.md`](./DEPLOYMENT.md) §3 asks for are done: a build-time
-`VITE_API_ORIGIN` so the SPA can live on a different host than the API, `[llm]` in the API
-image so Tier 4 isn't silently dead in the container, a runtime host permission for the
+`VITE_API_ORIGIN` so the SPA can live on a different host than the API, the `llm` extra in
+the API image so Tier 4 isn't silently dead in the container (since folded into the core
+dependencies; see *Bring your own key*), a runtime host permission for the
 extension, and `POST /reminders/sweep` so a free scheduler can do the worker's daily job
 where there's no Redis. `render.yaml`, `apps/web/vercel.json` and
 `.github/workflows/reminders.yml` are committed.
@@ -115,11 +116,28 @@ upload a resume (PDF or .docx) and optional notes, and the model writes a 250–
 letter from the cleaned description and that resume only. The letter can be edited,
 copied, regenerated, and downloaded as .docx.
 
-**Shared plumbing.** `services/ai.py` owns the client, resume intake, and the per-user
-monthly cap, which existed in config but was never enforced; it is now, through an
-`llm_calls` table that Tier 4 also counts against. The original Phase 4 (gated skill-gap
-analysis) and Phase 5 (Gmail sync) are dropped; the email-matching hooks in the schema
-stay.
+**Shared plumbing.** `services/ai.py` owns the client and resume intake. It also enforced
+a per-user monthly call cap through an `llm_calls` table, until *Bring your own key*
+removed it. The original Phase 4 (gated skill-gap analysis) and Phase 5 (Gmail sync) are
+dropped; the email-matching hooks in the schema stay.
+
+**Bring your own key.** The server no longer has a Claude key. Each user saves their own
+under 👤 → *Claude API key*; `PUT /ai-key` checks it with Claude, then stores it sealed in
+`user_ai_keys` (AES-GCM, key derived from `AI_KEY_SECRET`, the user's id bound in as
+associated data). The endpoint is write-only: `GET` says whether a key exists and shows
+its last four characters, never the key. Every AI call (Tier 4, the clean-up, cover
+letters, the extension's resume and field calls) builds a client from the calling user's
+key, and background jobs load it inside the job, so a key never rides through the queue.
+No key answers 428 with a message that points at the dialog. A key Claude rejects flips to
+`rejected` and answers 424; an empty Claude account or one at its spend limit answers 402,
+and a rate limit 429, each with its own message.
+The monthly cap is gone: the spend is the user's own, and the dialog suggests giving the
+app its own Anthropic workspace with a monthly spend limit (Anthropic sets those per
+workspace, not per key). `anthropic` became a core dependency, and `AI_KEY_SECRET` is
+required outside local, so the API and worker refuse to start without it. Changing it
+makes every stored key unreadable and users enter theirs again. After the deploy nobody
+has a key until they add one. Nothing reads `llm_calls` any more, but every AI call still
+writes a row there, so the table stays.
 
 ---
 
@@ -177,11 +195,12 @@ nothing at all — `test/run.mjs` asserts that, because it's the kind of propert
 erodes quietly.
 
 **A missing optional dependency is tested for, not just fixed.** Tier 4 was dead in the
-container because `anthropic` sits behind an extra the image didn't install, and
+container because `anthropic` sat behind an extra the image didn't install, and
 `tiers/llm.py` degrades on `ImportError` rather than raising — so nothing failed, the
-pipeline just quietly stopped one tier early. `tests/test_packaging.py` now reads the
-Dockerfile and asserts the extras it installs actually exist and include `llm`. A silent
-failure needs a test more than a loud one does.
+pipeline just quietly stopped one tier early. `tests/test_packaging.py` read the
+Dockerfile and asserted the extras it installs actually exist and include `llm`. A silent
+failure needs a test more than a loud one does. With *Bring your own key* the extra is
+gone: the test now asserts `anthropic` is a core dependency instead.
 
 **The sweep has one definition and two callers.** The doc suggested copying the worker's
 sweep body into the endpoint. It lives in `services/reminders.py::sweep` instead, called

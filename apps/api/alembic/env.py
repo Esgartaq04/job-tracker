@@ -11,7 +11,9 @@ config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # The suite runs migrations in-process on Postgres; the default would switch off
+    # every logger the app already created for the rest of that process.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

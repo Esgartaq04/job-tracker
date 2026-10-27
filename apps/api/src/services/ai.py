@@ -1,38 +1,54 @@
-"""Everything the AI features share: the client, the per-user monthly cap, and how a
-resume gets into a request.
+"""Everything the AI features share: a client on the user's own Claude key, the usage
+record, and how a resume gets into a request.
 
 Four features call a model — Tier 4 extraction, description clean-up, cover letters,
-and the extension's autofill — and each degrades the same two ways: no key (the
-feature is off) or the user's monthly cap is spent (README §8.3). Keeping both here
-means a new feature can't forget the cap.
+and the extension's autofill — and each runs on the key of the user it's for. There is
+no server-wide key. Each degrades the same ways: no key saved, a key Claude refused, or
+the user's Claude account out of credit or rate-limited. Keeping the client here means
+a new feature can't reach Claude on anyone else's key.
 """
 
 import base64
 import io
 import logging
-import os
 import uuid
 import zipfile
-from datetime import UTC, datetime
+from typing import Literal, NamedTuple
 
-import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from src.core.config import settings
 from src.models.llm_call import LLMCall
+from src.services import ai_keys
 
 logger = logging.getLogger(__name__)
 
 #: Well past any real resume, well short of what a free instance wants in memory.
 MAX_RESUME_BYTES = 5 * 1024 * 1024
 
+# What the user is told. Each says what to do next, since the extension shows it as is.
+MISSING_KEY = "Add your Claude API key (👤 → Claude API key) to use this."
+REJECTED_KEY = "Claude rejected your saved key. Replace it under 👤 → Claude API key."
+OUT_OF_CREDIT = (
+    "Your Claude account is out of credit. Add credit at console.anthropic.com, then try again."
+)
+RATE_LIMITED = "Your Claude account hit its rate limit. Try again in a minute."
+SPEND_LIMIT = (
+    "Your Claude account hit its spend limit. "
+    "Raise it in the Anthropic console, or wait for it to reset."
+)
+AI_CALL_FAILED = "The AI service couldn't complete that. Try again shortly."
+
 
 class AIUnavailable(RuntimeError):
-    """No API key, or the `anthropic` package isn't installed."""
+    """No usable key for this user, or the `anthropic` package isn't installed."""
 
 
-class AIQuotaExceeded(RuntimeError):
-    """This user has spent `llm_monthly_call_cap` calls this month."""
+class AIKeyMissing(AIUnavailable):
+    """The user hasn't saved a key, or the saved one can't be opened."""
+
+
+class AIKeyRejected(AIUnavailable):
+    """Claude refused the user's saved key, now or on an earlier call."""
 
 
 class AIFailed(RuntimeError):
@@ -45,58 +61,139 @@ class ResumeRejected(ValueError):
         self.status_code = status_code
 
 
-def enabled() -> bool:
-    return bool(settings.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY"))
+class SavedKey(NamedTuple):
+    key: str
+    #: The sealed form `key` was opened from, which says which saved key this is: a
+    #: client only marks *that* key rejected, never one the user saved since.
+    ciphertext: str | None
+
+    def __repr__(self) -> str:
+        # A tuple's repr shows its items, and one of these is the key.
+        return "SavedKey(key=<hidden>)"
 
 
-def client():
-    """An Anthropic client, or `AIUnavailable` saying why there isn't one."""
-    if not enabled():
-        raise AIUnavailable("AI features are off: no ANTHROPIC_API_KEY is configured.")
+def user_key(db: Session, user_id: uuid.UUID) -> SavedKey:
+    """The user's saved key, or why there isn't a usable one. A key Claude refused is
+    refused here too, without asking Claude again, until the user saves a new one. The
+    key, its status and its ciphertext all come off one read of the row."""
+    row = ai_keys.get_row(db, user_id)
+    key = None if row is None else ai_keys.open_key(row)
+    if key is None:
+        raise AIKeyMissing(MISSING_KEY)
+    if row.status == "rejected":
+        raise AIKeyRejected(REJECTED_KEY)
+    return SavedKey(key, row.ciphertext)
+
+
+def has_key(db: Session, user_id: uuid.UUID) -> bool:
+    """For call sites that skip AI rather than fail without it."""
+    try:
+        user_key(db, user_id)
+    except AIUnavailable:
+        return False
+    return True
+
+
+def _build_client(api_key: str):
     try:
         import anthropic
-    except ImportError as exc:  # pragma: no cover - optional dependency
+    except ImportError as exc:
         raise AIUnavailable("AI features are off: the anthropic package isn't installed.") from exc
-    return anthropic.Anthropic(api_key=settings.anthropic_api_key or None)
+    return anthropic.Anthropic(api_key=api_key)
+
+
+class UserClient:
+    """An Anthropic client on one user's key. When Claude refuses the key mid-call, the
+    key is marked rejected on the spot, so the next call stops at `user_key` — unless
+    the user has saved a different key since this client was built."""
+
+    def __init__(
+        self, inner, db: Session, user_id: uuid.UUID, ciphertext: str | None = None
+    ) -> None:
+        self._inner = inner
+        self._db = db
+        self._user_id = user_id
+        self._ciphertext = ciphertext
+        self.messages = _Messages(self)
+
+    def _call(self, method: str, request: dict):
+        try:
+            return getattr(self._inner.messages, method)(**request)
+        except Exception as exc:
+            if sdk_error_kind(exc) != "auth":
+                raise
+            logger.info("Claude rejected the saved key of user %s", self._user_id)
+            ai_keys.mark_rejected(self._db, self._user_id, ciphertext=self._ciphertext)
+            raise AIKeyRejected(REJECTED_KEY) from exc
+
+
+class _Messages:
+    """`client.messages`, as the call sites use it."""
+
+    def __init__(self, client: UserClient) -> None:
+        self._client = client
+
+    def create(self, **request):
+        return self._client._call("create", request)
+
+    def parse(self, **request):
+        return self._client._call("parse", request)
+
+
+def client_for(db: Session, user_id: uuid.UUID) -> UserClient:
+    """A client on the user's own key, built for this call. Nothing is cached, so a key
+    never outlives the request or job that loaded it."""
+    saved = user_key(db, user_id)
+    return UserClient(_build_client(saved.key), db, user_id, saved.ciphertext)
+
+
+def client_or_none(db: Session, user_id: uuid.UUID) -> UserClient | None:
+    """`client_for`, or None when AI can't run for this user (Tier 4 just skips)."""
+    try:
+        return client_for(db, user_id)
+    except AIUnavailable:
+        return None
+
+
+SdkErrorKind = Literal["auth", "rate_limit", "credit", "spend_limit", "other"]
+
+#: The kinds that are the user's own Claude account's limits, not a fault of ours or
+#: Claude's: reported to them plainly and logged as one line, without a traceback.
+ACCOUNT_LIMITS: frozenset[SdkErrorKind] = frozenset({"rate_limit", "credit", "spend_limit"})
+
+
+def sdk_error_kind(exc: BaseException) -> SdkErrorKind | None:
+    """What an Anthropic SDK error says about the user's key or account, or None when
+    `exc` isn't one. "auth" is their key; "rate_limit", "credit" (an empty balance) and
+    "spend_limit" (the monthly limit they set) are their account's limits, not ours."""
+    try:
+        import anthropic
+    except ImportError:
+        return None
+    if isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
+        return "auth"
+    if isinstance(exc, anthropic.RateLimitError):
+        return "rate_limit"
+    if isinstance(exc, anthropic.BadRequestError):
+        message = str(exc).lower()
+        if "credit balance" in message:
+            return "credit"
+        # "You have reached your specified API usage limits. You will regain access on …"
+        if "usage limit" in message:
+            return "spend_limit"
+    if isinstance(exc, anthropic.APIError):
+        return "other"
+    return None
 
 
 def is_sdk_error(exc: Exception) -> bool:
     """An error from the API itself: rate limits, overload, timeouts, bad requests."""
-    try:
-        import anthropic
-    except ImportError:  # pragma: no cover - optional dependency
-        return False
-    return isinstance(exc, anthropic.APIError)
-
-
-def _month_start() -> datetime:
-    now = datetime.now(UTC)
-    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-
-def calls_this_month(db: Session, user_id: uuid.UUID) -> int:
-    return (
-        db.scalar(
-            sa.select(sa.func.count())
-            .select_from(LLMCall)
-            .where(LLMCall.user_id == user_id, LLMCall.created_at >= _month_start())
-        )
-        or 0
-    )
-
-
-def under_cap(db: Session, user_id: uuid.UUID) -> bool:
-    return calls_this_month(db, user_id) < settings.llm_monthly_call_cap
+    return sdk_error_kind(exc) is not None
 
 
 def reserve_call(db: Session, user_id: uuid.UUID, kind: str) -> None:
-    """Count a call before making it. Raises when the cap is spent, so a feature
-    degrades to its no-AI path instead of running up a bill."""
-    if not under_cap(db, user_id):
-        raise AIQuotaExceeded(
-            f"You've used this month's {settings.llm_monthly_call_cap} AI calls. "
-            "They reset on the 1st."
-        )
+    """Record a call before making it. Only a usage record: the limits are the user's
+    own Claude account's."""
     db.add(LLMCall(user_id=user_id, kind=kind))
     db.flush()
 

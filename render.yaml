@@ -41,10 +41,10 @@ services:
       - key: ENVIRONMENT
         value: production
 
-      # Tier 4 (LLM structuring). Optional — without it the pipeline stops at Tier 3 and
-      # falls back to manual paste. llm_monthly_call_cap already caps it at 500/month.
-      - key: ANTHROPIC_API_KEY
-        sync: false
+      # Seals users' Claude keys. Changing it makes every stored key unreadable — users
+      # must re-enter them.
+      - key: AI_KEY_SECRET
+        generateValue: true
 
       # Must match SWEEP_SECRET in the repository secrets for the reminders workflow.
       # Leave unset and POST /reminders/sweep 404s, which is the safe default.

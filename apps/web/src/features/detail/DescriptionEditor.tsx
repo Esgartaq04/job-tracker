@@ -1,8 +1,10 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import type { ApplicationDetail, CleanupMeta } from "../../api/types";
-import { useCleanDescription, useUpdateApplication } from "../../api/hooks";
+import { queryKeys, useAiKey, useCleanDescription, useUpdateApplication } from "../../api/hooks";
 import { useUi } from "../../lib/store";
+import { aiUsable, isAiKeyError } from "../aikey/aiKeyErrors";
 
 /**
  * Three layers, most specific first: the user's edit, the AI clean-up, the raw scrape.
@@ -16,6 +18,10 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
   const update = useUpdateApplication(application.id);
   const clean = useCleanDescription(application.id);
   const notify = useUi((state) => state.notify);
+  const openAiKeyDialog = useUi((state) => state.openAiKeyDialog);
+  const { data: aiKey } = useAiKey();
+  const aiReady = aiUsable(aiKey);
+  const queryClient = useQueryClient();
 
   const edited = Boolean(application.description_user);
   const hasClean = Boolean(application.description_clean);
@@ -89,12 +95,20 @@ export function DescriptionEditor({ application }: { application: ApplicationDet
                   className="text-slate-400 hover:text-slate-200 disabled:opacity-60"
                   title="Remove page clutter with AI, without rewording anything"
                   onClick={() =>
-                    clean.mutate(undefined, {
-                      onError: (error) => notify(error.message, "error"),
-                    })
+                    aiReady
+                      ? clean.mutate(undefined, {
+                          onError: (error) => {
+                            notify(error.message, "error");
+                            if (!isAiKeyError(error)) return;
+                            // The server knows better than our copy of the key's state.
+                            queryClient.invalidateQueries({ queryKey: queryKeys.aiKey });
+                            openAiKeyDialog();
+                          },
+                        })
+                      : openAiKeyDialog()
                   }
                 >
-                  {clean.isPending ? "Cleaning…" : "Clean up"}
+                  {clean.isPending ? "Cleaning…" : aiReady ? "Clean up" : "Add Claude key to clean up"}
                 </button>
               )}
               <button

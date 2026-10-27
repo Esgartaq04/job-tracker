@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { getToken } from "./api/client";
 import { useServerEvents } from "./api/events";
+import { AiKeyDialog } from "./features/aikey/AiKeyDialog";
 import { AccountMenu } from "./features/auth/AccountMenu";
 import { SignIn } from "./features/auth/SignIn";
 import { Board } from "./features/board/Board";
@@ -37,7 +38,11 @@ export function App() {
   useEffect(() => applyPrefs(dimension, pixelFont, backdrop), [dimension, pixelFont, backdrop]);
 
   useEffect(() => {
-    const onSignedOut = () => setSignedIn(false);
+    const onSignedOut = () => {
+      setSignedIn(false);
+      // The store outlives the session; left open, the dialog would greet the next sign-in.
+      useUi.getState().closeAiKeyDialog();
+    };
     window.addEventListener("job-tracker:signed-out", onSignedOut);
     return () => window.removeEventListener("job-tracker:signed-out", onSignedOut);
   }, []);
@@ -98,6 +103,7 @@ export function App() {
 
       <Drawer />
       <QuickAddSheet />
+      <AiKeyDialog />
 
       {toast && (
         <div

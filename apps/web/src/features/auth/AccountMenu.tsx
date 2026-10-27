@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { getToken, setToken } from "../../api/client";
+import { useAiKey } from "../../api/hooks";
+import type { AiKeyState } from "../../api/types";
 import { usePrefs } from "../../lib/prefs";
 import { useUi } from "../../lib/store";
 import { enableDesktopNotifications } from "../reminders/NeedsAttention";
@@ -17,6 +19,8 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
   const togglePixelFont = usePrefs((state) => state.togglePixelFont);
   const backdrop = usePrefs((state) => state.backdrop);
   const toggleBackdrop = usePrefs((state) => state.toggleBackdrop);
+  const openAiKeyDialog = useUi((state) => state.openAiKeyDialog);
+  const { data: aiKey } = useAiKey();
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -99,6 +103,18 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
           </button>
           <button
             type="button"
+            role="menuitem"
+            onClick={() => {
+              openAiKeyDialog();
+              setOpen(false);
+            }}
+            className="block w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-surface-border/60"
+          >
+            Claude API key
+            <span className="block text-[11px] text-slate-500">{aiKeySubtitle(aiKey)}</span>
+          </button>
+          <button
+            type="button"
             role="menuitemcheckbox"
             aria-checked={pixelFont}
             onClick={togglePixelFont}
@@ -138,4 +154,11 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
       )}
     </div>
   );
+}
+
+/** What the menu says about the Claude key, from the server's description of it. */
+function aiKeySubtitle(aiKey: AiKeyState | undefined): string {
+  if (!aiKey?.has_key) return "Turn on AI features";
+  if (aiKey.status === "rejected") return "Rejected — replace it";
+  return `Connected · ${aiKey.hint ?? ""}`.trimEnd();
 }

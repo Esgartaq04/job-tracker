@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   useMutation,
   useQuery,
@@ -8,6 +9,7 @@ import {
 import { API_BASE, ApiError, api, getToken } from "./client";
 import type {
   Activity,
+  AiKeyState,
   Application,
   ApplicationDetail,
   AppStatus,
@@ -33,6 +35,7 @@ export const queryKeys = {
   activity: ["stats", "activity"] as const,
   reminders: ["reminders"] as const,
   search: (q: string) => ["search", q] as const,
+  aiKey: ["ai-key"] as const,
 };
 
 export function useBoard(query?: string) {
@@ -305,5 +308,50 @@ export function useMoveApplication() {
       queryClient.invalidateQueries({ queryKey: queryKeys.reminders });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
+  });
+}
+
+const NO_AI_KEY: AiKeyState = { has_key: false, hint: null, status: null, updated_at: null };
+
+/** Whether the user has a Claude key saved, and its last four characters. Never the key. */
+export function useAiKey() {
+  return useQuery({ queryKey: queryKeys.aiKey, queryFn: () => api.get<AiKeyState>("/ai-key") });
+}
+
+/**
+ * Save or replace the Claude key. Deliberately not a `useMutation`: a mutation keeps its
+ * variables — here the raw key — in the MutationCache for as long as the client lives. The
+ * key exists only as the argument of one `save` call and is never put in state, a ref or
+ * the query cache; only the server's answer (the hint) is cached.
+ */
+export function useSaveAiKey() {
+  const queryClient = useQueryClient();
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  async function save(apiKey: string): Promise<AiKeyState> {
+    setIsPending(true);
+    setError(null);
+    try {
+      const saved = await api.put<AiKeyState>("/ai-key", { api_key: apiKey });
+      queryClient.setQueryData(queryKeys.aiKey, saved);
+      return saved;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught : new Error(String(caught)));
+      throw caught;
+    } finally {
+      setIsPending(false);
+    }
+  }
+
+  return { save, isPending, error };
+}
+
+/** Delete the saved key. Nothing secret is in its variables, so a plain mutation is fine. */
+export function useRemoveAiKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.delete<void>("/ai-key"),
+    onSuccess: () => queryClient.setQueryData(queryKeys.aiKey, NO_AI_KEY),
   });
 }

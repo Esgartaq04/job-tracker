@@ -53,7 +53,9 @@ push. §3.4 adds that back over HTTP, on a free scheduler.
 | Redis | not deployed (`REDIS_URL` unset) | $0 |
 | `apps/worker` | not deployed (no Redis to consume) | $0 |
 | Tier 3 Playwright | not installed (`INGEST_BROWSER_ENABLED` stays `0`) | $0 |
-| Tier 4 LLM | Anthropic API, capped at 500 calls/month in config | ~$0–2/mo |
+
+AI features aren't a line in this table: every call runs on the calling user's own Claude
+key, so the bill goes to them. See §4.2 for the one secret that makes that safe.
 
 **Verify every free tier before committing** — all three providers changed theirs in the
 last eighteen months.
@@ -99,16 +101,22 @@ service worker out of the way of both the API and the SSE stream once they move 
 Vite inlines `import.meta.env` **at build time** — changing it in the Vercel dashboard
 without redeploying changes nothing.
 
-### 3.2 The image installs the `llm` extra
+### 3.2 `anthropic` is a core dependency
 
-`apps/api/Dockerfile` now runs `pip install ".[llm]"`. Without it, Tier 4 was dead in the
-container even with `ANTHROPIC_API_KEY` set — and dead *quietly*: `tiers/llm.py` catches
+This used to be an `llm` extra that the image installed with `pip install ".[llm]"`.
+Without it Tier 4 was dead in the container — and dead *quietly*: `tiers/llm.py` catches
 the `ImportError`, logs one INFO line, and returns `None`, so the pipeline just stopped
 at Tier 2 and every posting looked a little worse than it should have.
 
-That silence is why `tests/test_packaging.py` now parses the Dockerfile and asserts the
-extras it installs exist in `pyproject.toml`, that `llm` is among them, and that
-`browser` is not — Playwright's download will not fit a 512 MB instance.
+Every user now brings their own Claude key (§4.2), so the SDK can't be optional.
+`anthropic` is in `dependencies` in `pyproject.toml`, the `llm` extra no longer exists,
+and the image runs a plain `pip install .` — the worker image installs `./apps/api`, so
+it gets the SDK too. `tests/test_packaging.py` asserts that `anthropic` is a core
+dependency and that the `browser` extra stays out of the image, because Playwright's
+download will not fit a 512 MB instance.
+
+The one remaining reason Tier 4 is off is a user without a saved key. Then the pipeline
+stops at the cheaper tiers and the card's `extraction_meta` records `"llm": "no_key"`.
 
 ### 3.3 The extension asks for one host, at runtime
 
@@ -174,9 +182,10 @@ worker B.
 
 The blueprint is committed at **`render.yaml`** in the repo root: point Render at the
 repo and it reads that file. Every secret is `sync: false`, so Render prompts for it
-rather than the repo carrying it; `JWT_SECRET` is `generateValue: true`, so the
-`dev-secret-change-me` default can't reach production by inattention. Edit
-`CORS_ORIGINS` to your real Vercel URL before the first deploy.
+rather than the repo carrying it; `JWT_SECRET` and `AI_KEY_SECRET` are
+`generateValue: true`, so the `dev-secret-change-me` default can't reach production by
+inattention, and `AI_KEY_SECRET` never has to be invented by hand. Edit `CORS_ORIGINS` to
+your real Vercel URL before the first deploy.
 
 Blueprint field names have drifted across Render versions — if it refuses the file, check
 the current spec rather than assuming the file is wrong.
@@ -189,12 +198,36 @@ Every setting, with the real defaults from `core/config.py`:
 | `REDIS_URL` | **unset** | Setting it without running a worker means jobs enqueue and nothing consumes them |
 | `JWT_SECRET` | 48 random bytes | Default `dev-secret-change-me` signs every session |
 | `CORS_ORIGINS` | `["https://<your-app>.vercel.app"]` | Parsed as a **JSON list** by pydantic-settings. Add the custom domain when you add one |
-| `ANTHROPIC_API_KEY` | optional | Tier 4 only. `llm_monthly_call_cap` already caps it at 500 calls/month |
+| `AI_KEY_SECRET` | generated (`generateValue`) | Seals each user's saved Claude key. **Required** outside `ENVIRONMENT=local`: the API (and the worker, if you run one) refuses to start without it. See the warning below this table |
 | `INGEST_BROWSER_ENABLED` | leave unset | Read directly by `tiers/browser.py`; anything but `1`/`true`/`yes` is off |
 | `REMINDER_EMAIL_ENABLED` | `false` | `notify.py` has no provider — a `true` here changes nothing but the log |
 | `REMINDER_SWEEP_HOUR_UTC` | `13` | 8am Chicago in summer, 7am in winter. Read by the **worker's** arq cron only; the GitHub Actions schedule has its own time |
 | `SWEEP_SECRET` | 32 random bytes, or unset | Must match the `SWEEP_SECRET` repository secret. Unset means `POST /reminders/sweep` 404s — the safe default |
 | `ENVIRONMENT` | `production` | Surfaced by `/healthz` |
+
+**Treat `AI_KEY_SECRET` as permanent:** changing or losing it makes every stored key
+unreadable (each user has to add theirs again), and re-creating the Render service from the
+Blueprint generates a new one, so copy the generated value somewhere safe after the first
+deploy.
+
+**There is no server-wide Anthropic key.** Each user pastes their own under 👤 → **Claude
+API key**; the API checks it with Claude once, then stores it encrypted with
+`AI_KEY_SECRET`, and never returns it. After a deploy nobody has a key yet, you included,
+so every AI feature stays off until each person adds theirs. Old `llm_calls` rows stay in
+the database and nothing reads them any more, but the app still writes a row for every AI
+call, so don't drop the table.
+
+What that protects, and what it doesn't: a database leak gets ciphertext only, because the
+secret lives in the host's environment and not in Neon. A stolen session token can spend
+someone's key but can't read it. You, as the operator, could decrypt any key — true of any
+server-side secret — so the dialog's tip is: give this app its own Anthropic workspace with
+a monthly spend limit, and make its key there. Anthropic sets spend limits per workspace or
+per organization, not per key, so that workspace's limit is the real cap.
+
+If you later run `apps/worker`, give it the same `AI_KEY_SECRET` and `ENVIRONMENT=production`.
+A worker with a different secret can't open keys the API sealed: Tier 4 skips for everyone
+and records `no_key` on the card, and the description clean-up skips without recording
+anything.
 
 Turn off preview environments. Each one is another process against the same database, and
 on the free plan they eat the 750 hours.
@@ -278,6 +311,20 @@ Ping `/healthz`, not `/readyz`. `/readyz` opens a database connection, so pingin
 ten minutes keeps Neon's compute awake around the clock and burns the 100 CU-hours you're
 trying to conserve. `/healthz` touches nothing.
 
+### 4.6 Upgrading an existing deploy
+
+For a deploy that predates per-user Claude keys (migration `0003`):
+
+1. **Set `AI_KEY_SECRET` before you deploy**, on the API and on the worker if you run one.
+   A Render service that isn't synced from the Blueprint won't generate it, so add it by
+   hand, or the new image fails at startup.
+2. **Delete the old `ANTHROPIC_API_KEY`** from the host's dashboard. Removing it from
+   `render.yaml` doesn't delete a value set in the dashboard. Nothing reads it now.
+3. **After the deploy, add your own key** under 👤 → **Claude API key**. Nobody has a key
+   until they add one, so the AI features are off for everyone until then.
+4. **To roll back** to an image from before `0003`, run `alembic downgrade 0002` first, or
+   the old image won't boot.
+
 ---
 
 ## 5. What it costs, and what makes it stop being free
@@ -285,13 +332,14 @@ trying to conserve. `/healthz` touches nothing.
 | | Monthly |
 |---|---|
 | Vercel Hobby + Render free + Neon free | $0 |
-| Anthropic API (Tier 4 only) | ~$0–2 |
 | Same with Fly instead of Render free | ~$2–6 |
 
-The one line item that can surprise you is Tier 4, which fires whenever the cheap tiers
-leave holes — a bad week of LinkedIn pastes is a lot of fallbacks. `ingest_jobs` records
-`tier_succeeded` per attempt, so the answer is one query away, and README §11's alert
-threshold (Tier-4 rate over 25%) is a cost signal as much as a quality one.
+Claude isn't on this bill: each user pays Anthropic directly through their own key, and
+can cap it with a monthly spend limit on the Anthropic workspace that key belongs to. For
+users with a saved key, Tier 4 still fires whenever the cheap tiers leave holes; for
+everyone else it never runs. `ingest_jobs` records `tier_succeeded` per attempt, so how
+often it runs is one query away. README §11's alert threshold (Tier-4 rate over 25%) is now
+a quality signal for the extractors and a cost signal for your users, not for you.
 
 Migration triggers, in the order you'll hit them:
 
@@ -310,8 +358,8 @@ You asked to not paint yourself into a corner. You aren't, and the reason is tha
 backend seam in this repo is already an environment variable.
 
 **Phase 4 (skill-gap, resume-versus-outcome, interview prep)** is more LLM calls against
-the same database. No infrastructure change. Watch `llm_monthly_call_cap` — 500/month is
-sized for extraction fallback, not for a feature users invoke on purpose.
+the same database. No infrastructure change, and no change to your bill: each call runs on
+the user's own key.
 
 **Phase 5 (Gmail)** is where this deployment needs three specific things:
 

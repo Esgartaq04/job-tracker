@@ -119,8 +119,8 @@ def _substituted(raw_words: list[str], cleaned_words: list[str]) -> bool:
 def clean_description(db: Session, application: Application) -> Verdict:
     """Clean one application's description and record the outcome on the card.
 
-    Raises `ai.AIUnavailable` / `ai.AIQuotaExceeded` *before* touching the card, so a
-    caller decides whether that's an error (the button) or a no-op (the background run).
+    Raises `ai.AIUnavailable` (no key, or one Claude refused) *before* touching the card,
+    so a caller decides whether that's an error (the button) or a no-op (the background run).
     Returns the verdict; on success `description_clean` is set.
     """
     raw = (application.description_raw or "").strip()
@@ -129,7 +129,7 @@ def clean_description(db: Session, application: Application) -> Verdict:
     if len(raw) > MAX_CHARS:
         return _record(application, Verdict(False, "it's too long to clean safely", skipped=True))
 
-    client = ai.client()
+    client = ai.client_for(db, application.user_id)
     ai.reserve_call(db, application.user_id, "cleanup")
 
     response = client.messages.create(
@@ -179,7 +179,7 @@ def run_cleanup(db: Session, application_id: uuid.UUID) -> None:
         return
     try:
         verdict = clean_description(db, application)
-    except (ai.AIUnavailable, ai.AIQuotaExceeded) as exc:
+    except ai.AIUnavailable as exc:
         logger.info("cleanup skipped for %s: %s", application_id, exc)
         db.rollback()
         return
