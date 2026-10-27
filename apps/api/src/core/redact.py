@@ -15,17 +15,33 @@ _REDACTED = "sk-ant-…redacted"
 _LOGGERS = ("", "uvicorn", "uvicorn.error", "uvicorn.access")
 
 
-def _scrub(value):
-    return KEY_PATTERN.sub(_REDACTED, value) if isinstance(value, str) else value
+def _scrub(text: str) -> str:
+    return KEY_PATTERN.sub(_REDACTED, text)
 
 
 class RedactKeys(logging.Filter):
+    """Redacts the record as it will be rendered, not its parts: a key can hide in the
+    `str()` of an exception or object passed as an arg, in a traceback, or in stack info."""
+
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = _scrub(record.msg)
-        if isinstance(record.args, tuple):
-            record.args = tuple(_scrub(arg) for arg in record.args)
-        elif isinstance(record.args, dict):
-            record.args = {key: _scrub(arg) for key, arg in record.args.items()}
+        try:
+            message = record.getMessage()
+        except Exception:
+            pass  # a malformed log call; leave it for the handler to report
+        else:
+            if KEY_PATTERN.search(message):
+                # Freeze the rendered text so the args, and whatever their str() says, are
+                # gone. Only done on a hit: uvicorn's access formatter unpacks the args
+                # itself, so clean records have to keep them.
+                record.msg = _scrub(message)
+                record.args = ()
+        if record.exc_info:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+            record.exc_info = None  # so formatters use exc_text, not a fresh raw traceback
+        if record.exc_text:
+            record.exc_text = _scrub(record.exc_text)
+        if record.stack_info:
+            record.stack_info = _scrub(record.stack_info)
         return True
 
 
