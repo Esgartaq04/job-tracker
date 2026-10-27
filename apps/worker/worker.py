@@ -75,8 +75,10 @@ async def sweep_reminders(_ctx: dict) -> dict[str, int]:
 
 
 async def startup(_ctx: dict) -> None:
-    # arq sets up its own log handlers after this module is imported, so the filter goes
-    # on here rather than next to `basicConfig`.
+    # arq's CLI imports this module first and only then applies its logging config, which
+    # adds a handler to the `arq` logger. That handler doesn't exist at import time, so the
+    # filter goes on here (redact.install covers `arq` as well as root), not next to
+    # `basicConfig`.
     redact.install()
     crypto.check_configured()
     logger.info("worker ready (db=%s)", settings.database_url.split("@")[-1])

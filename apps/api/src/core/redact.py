@@ -11,8 +11,10 @@ import re
 KEY_PATTERN = re.compile(r"sk-ant-[A-Za-z0-9_\-]+")
 _REDACTED = "sk-ant-…redacted"
 
-# uvicorn gives its loggers their own handlers, so root alone doesn't cover them.
-_LOGGERS = ("", "uvicorn", "uvicorn.error", "uvicorn.access")
+# uvicorn and arq give their loggers their own handlers, so root alone doesn't cover them.
+# arq's child loggers (`arq.worker` logs failed jobs, exception included) propagate to the
+# handler on `arq`.
+_LOGGERS = ("", "uvicorn", "uvicorn.error", "uvicorn.access", "arq")
 
 
 def _scrub(text: str) -> str:

@@ -1,5 +1,10 @@
+import io
 import logging
+import logging.config
 import sys
+
+import pytest
+from arq.logs import default_log_config
 
 from src.core import redact
 
@@ -118,3 +123,32 @@ def test_uvicorn_access_lines_still_format():
     redact.RedactKeys().filter(r)
     formatter = AccessFormatter("%(request_line)s -> %(status_code)s", use_colors=False)
     assert formatter.format(r) == "GET /healthz HTTP/1.1 -> 200 OK"
+
+
+@pytest.fixture
+def arq_log_output():
+    """arq's own logging setup, as its CLI applies it after importing the worker module,
+    with the handler's output swapped for a buffer. Undone afterwards."""
+    arq_logger = logging.getLogger("arq")
+    before = (arq_logger.handlers[:], arq_logger.level, arq_logger.propagate)
+    logging.config.dictConfig(default_log_config(verbose=False))
+    handler = next(h for h in arq_logger.handlers if h.name == "arq.standard")
+    output = io.StringIO()
+    handler.setStream(output)
+    yield output
+    for h in arq_logger.handlers[:]:
+        if h not in before[0]:
+            arq_logger.removeHandler(h)
+            h.close()
+    arq_logger.setLevel(before[1])
+    arq_logger.propagate = before[2]
+
+
+def test_install_covers_the_handler_arq_adds_to_its_own_logger(arq_log_output):
+    redact.install()
+    try:
+        raise RuntimeError("bad sk-ant-api03-LEAKME")
+    except RuntimeError as exc:
+        logging.getLogger("arq.worker").exception("job failed: %s", exc)
+    assert "job failed" in arq_log_output.getvalue()
+    assert "LEAKME" not in arq_log_output.getvalue()
